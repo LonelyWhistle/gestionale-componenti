@@ -11,9 +11,9 @@ interface CsvImportModalProps {
 }
 
 const REQUIRED_HEADERS = [
-  'sekoCode', 'description', 'supplierName', 'supplierPartNumber', 'cost', 'leadTime'
+  'sekoCode', 'description', 'supplierName', 'cost', 'leadTime'
 ];
-const OPTIONAL_HEADERS = ['aselCode', 'packaging'];
+const OPTIONAL_HEADERS = ['aselCode', 'packaging', 'supplierPartNumber'];
 
 
 const CsvImportModal: React.FC<CsvImportModalProps> = ({ isOpen, onClose, onImport }) => {
@@ -56,14 +56,15 @@ const CsvImportModal: React.FC<CsvImportModalProps> = ({ isOpen, onClose, onImpo
                 const sekoCode = String(row.sekoCode || '').trim();
                 const description = String(row.description || '').trim();
                 const supplierName = String(row.supplierName || '').trim();
-                const supplierPartNumber = String(row.supplierPartNumber || '').trim();
                 const cost = row.cost;
                 const leadTime = row.leadTime;
 
-                if (!sekoCode || !description || !supplierName || !supplierPartNumber || cost == null || leadTime == null) {
-                    console.warn(`Riga ${index + 2}: Dati obbligatori mancanti (sekoCode, description, supplierName, supplierPartNumber, cost, leadTime). La riga verrà saltata.`);
+                if (!sekoCode || !description || !supplierName || cost == null || leadTime == null) {
+                    console.warn(`Riga ${index + 2}: Dati obbligatori mancanti (sekoCode, description, supplierName, cost, leadTime). La riga verrà saltata.`);
                     return;
                 }
+                
+                const supplierPartNumber = String(row.supplierPartNumber || '').trim();
 
                 if (!componentsMap.has(sekoCode)) {
                     const newComponent: Omit<ElectronicComponent, 'suppliers'> = {

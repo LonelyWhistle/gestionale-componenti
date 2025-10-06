@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { initializeApp } from 'firebase/app';
 import { 
     getAuth, 
@@ -177,17 +177,26 @@ const LoginPage = ({ onLogin, error }) => {
   );
 };
 
-// --- MODALI ---
-
-// FIX: Spostato InputField fuori dal componente ComponentModal per evitare re-render non necessari
-const InputField = ({ label, name, value, onChange, required, type, readOnly, placeholder, step }) => (
+// --- CAMPO INPUT RIUTILIZZABILE ---
+const InputField = ({ label, name, value, onChange, required, type = "text", readOnly = false, placeholder = '', step = null }) => (
     <div>
         <label htmlFor={name} className="block text-sm font-medium text-slate-400 mb-1">{label}</label>
-        <input type={type || "text"} name={name} id={name} value={value} onChange={onChange} required={required} readOnly={readOnly} placeholder={placeholder} step={step}
-            className={`w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-md shadow-sm focus:ring-1 focus:ring-electric-blue focus:border-electric-blue transition-colors ${readOnly ? 'cursor-not-allowed opacity-60' : ''}`} />
+        <input 
+            type={type} 
+            name={name} 
+            id={name}
+            value={value} 
+            onChange={onChange} 
+            required={required}
+            readOnly={readOnly}
+            placeholder={placeholder}
+            step={step}
+            className={`w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-md shadow-sm focus:ring-1 focus:ring-electric-blue focus:border-electric-blue transition-colors ${readOnly ? 'cursor-not-allowed opacity-60' : ''}`}
+        />
     </div>
 );
 
+// --- MODALI ---
 const ComponentModal = ({ component, onClose, onSave }) => {
   const [formData, setFormData] = useState({ sekoCode: '', aselCode: '', description: '', suppliers: [], logs: [] });
   const [lfWmsCode, setLfWmsCode] = useState('');
@@ -275,8 +284,8 @@ const ComponentModal = ({ component, onClose, onSave }) => {
                     <InputField label="Part Number" name="partNumber" placeholder="Codice del fornitore" value={supplierForm.partNumber} onChange={handleSupplierFormChange} />
                     <InputField label="Confezione" name="packaging" placeholder="Es. Bobina" value={supplierForm.packaging} onChange={handleSupplierFormChange} />
                     <div>
-                        <label className="block text-sm font-medium text-slate-400 mb-1">Costo</label>
-                        <div className="relative"><span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 text-sm">€</span><input type="number" name="cost" placeholder="0.00000" value={supplierForm.cost} onChange={handleSupplierFormChange} step="0.00001" className="w-full pl-7 pr-3 py-2 bg-slate-800/50 border border-slate-700 rounded-md text-sm shadow-sm focus:ring-1 focus:ring-electric-blue focus:border-electric-blue"/></div>
+                        <label className="text-xs font-medium text-slate-400">Costo</label>
+                        <div className="relative"><span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400 text-sm">€</span><input type="number" name="cost" placeholder="0.00000" value={supplierForm.cost} onChange={handleSupplierFormChange} step="0.00001" className="w-full mt-1 pl-7 pr-3 py-2 bg-slate-700/50 border border-slate-600 rounded-md text-sm shadow-sm focus:ring-1 focus:ring-electric-blue focus:border-electric-blue"/></div>
                     </div>
                     <div className="lg:col-span-2 flex items-end gap-2">
                         <div className="w-full">
@@ -384,15 +393,15 @@ const BomQuoteModal = ({ isOpen, onClose, components }) => {
                     <div><label htmlFor="bom-input" className="block text-sm font-medium text-slate-400 mb-2">Incolla i codici Seko (uno per riga)</label><textarea id="bom-input" rows={8} className="w-full p-3 font-mono bg-slate-800/50 border border-slate-700 rounded-md" placeholder="514846&#10;823301" value={sekoCodes} onChange={(e) => setSekoCodes(e.target.value)} /></div>
                     {searched && (<div><h3 className="text-lg font-semibold mb-4">Risultati</h3>
                         <div className="border border-slate-800 rounded-lg overflow-hidden"><table className="w-full text-sm">
-                            <thead className="text-xs bg-slate-800/80 text-slate-400"><tr><th className="px-4 py-3 font-medium">Seko Input</th><th className="px-4 py-3 font-medium">Stato</th><th className="px-4 py-3 font-medium">Descrizione</th><th className="px-4 py-3 font-medium">Fornitore</th><th className="px-4 py-3 font-medium">Costo</th><th className="px-4 py-3 font-medium">Lead Time</th></tr></thead>
-                            <tbody className="divide-y divide-slate-800/80 text-slate-300">{quoteResults.map((res, index) => (
+                            <thead className="text-xs bg-slate-800/80 text-slate-400"><tr><th className="px-4 py-3 font-medium tracking-wider">Seko Input</th><th className="px-4 py-3 font-medium tracking-wider">Stato</th><th className="px-4 py-3 font-medium tracking-wider">Descrizione</th><th className="px-4 py-3 font-medium tracking-wider">Fornitore</th><th className="px-4 py-3 font-medium tracking-wider">Costo</th><th className="px-4 py-3 font-medium tracking-wider">Lead Time</th></tr></thead>
+                            <tbody className="divide-y divide-slate-800">{quoteResults.map((res, index) => (
                                <React.Fragment key={index}>{res.status === 'Trovato' && res.component.suppliers.length > 0 ? res.component.suppliers.map((sup, supIndex) => (
                                    <tr key={`${index}-${supIndex}`} className="hover:bg-slate-800/70">
                                        <td className="px-4 py-2 font-mono text-electric-blue">{supIndex === 0 ? res.inputSeko : ''}</td>
                                        <td className="px-4 py-2">{supIndex === 0 ? <span className="px-2 py-1 text-xs bg-green-500/10 text-green-400 rounded-full border border-green-500/20">Trovato</span> : ''}</td>
                                        <td className="px-4 py-2">{supIndex === 0 ? res.component.description : ''}</td>
                                        <td className="px-4 py-2">{sup.name}</td>
-                                       <td className="px-4 py-2">{sup.cost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR' })}</td>
+                                       <td className="px-4 py-2">{sup.cost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR', minimumFractionDigits: 5, maximumFractionDigits: 5 })}</td>
                                        <td className="px-4 py-2">{sup.leadTime}</td>
                                    </tr>
                                )) : (
@@ -404,7 +413,7 @@ const BomQuoteModal = ({ isOpen, onClose, components }) => {
                 </div>
                 <footer className="flex justify-between items-center p-4 border-t border-slate-800">
                     <div>{quoteResults.length > 0 && <button onClick={handleExport} className="flex items-center gap-2 bg-green-500/10 text-green-400 font-semibold py-2 px-4 rounded-lg border border-green-500/30 hover:bg-green-500/20"><FileExcelIcon /> Esporta</button>}</div>
-                    <div className="flex items-center gap-3"><button onClick={onClose} className="bg-slate-700/50 text-slate-300 font-semibold py-2 px-4 rounded-lg mr-2 hover:bg-slate-700/80">Chiudi</button><button onClick={handleSearch} className="flex items-center gap-2 bg-electric-blue text-white font-bold py-2 px-5 rounded-lg"><SearchIcon /> Cerca</button></div>
+                    <div className="flex items-center gap-3"><button onClick={onClose} className="bg-slate-700/50 text-slate-300 font-semibold py-2 px-4 rounded-lg hover:bg-slate-700/80">Chiudi</button><button onClick={handleSearch} className="flex items-center gap-2 bg-electric-blue text-white font-bold py-2 px-5 rounded-lg shadow-lg shadow-electric-blue/20 hover:bg-electric-blue/90"><SearchIcon /> Cerca</button></div>
                 </footer>
             </div>
         </div>
@@ -455,28 +464,27 @@ const CsvImportModal = ({ isOpen, onClose, onImport }) => {
                     }
                 });
                 onImport(Array.from(componentsMap.values()));
-                onClose();
             } catch (err) { setError(`Errore elaborazione file: ${err.message}`); } 
             finally { setProcessing(false); }
         };
         reader.onerror = () => { setError("Impossibile leggere il file."); setProcessing(false); };
         reader.readAsBinaryString(file);
-    }, [onImport, onClose]);
+    }, [onImport]);
 
     if (!isOpen) return null;
     
     return (
         <div className="fixed inset-0 bg-black/70 z-50 flex justify-center items-center p-4"><div className="bg-slate-900/80 w-full max-w-2xl max-h-[90vh] flex flex-col rounded-xl border border-slate-700">
-            <header className="flex justify-between items-center p-5 border-b border-slate-800"><h2 className="text-xl font-bold text-slate-100">Importa CSV</h2><button onClick={onClose} className="text-slate-400 hover:text-white"><XIcon /></button></header>
+            <header className="flex justify-between items-center p-5 border-b border-slate-800"><h2 className="text-xl font-bold">Importa CSV</h2><button onClick={onClose} className="text-slate-500 hover:text-slate-100"><XIcon /></button></header>
             <div className="p-6 flex-grow overflow-y-auto">
                 <div onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }} onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); }} onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }} onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); if (e.dataTransfer.files?.[0]) handleFileProcess(e.dataTransfer.files[0]); }}
                     className={`relative border-2 border-dashed rounded-lg p-10 text-center transition-colors ${isDragging ? 'border-electric-blue bg-electric-blue/10' : 'border-slate-600'}`}>
                     <FileImportIcon className="mx-auto h-12 w-12 text-slate-500"/>
-                    <p className="mt-2 text-slate-400"><span className="font-semibold text-electric-blue">Trascina un file</span> o clicca per caricare</p>
+                    <p className="mt-2"><span className="font-semibold text-electric-blue">Trascina un file</span> o clicca</p>
                     <input type="file" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={(e) => { if (e.target.files?.[0]) handleFileProcess(e.target.files[0]); }} accept=".csv,.xlsx,.xls" />
                 </div>
                 {processing && <p className="text-center mt-4 text-electric-blue">Elaborazione...</p>}
-                {error && <div className="mt-4 p-3 bg-red-500/10 text-red-400 border border-red-500/30 rounded-md">{error}</div>}
+                {error && <div className="mt-4 p-3 bg-red-500/10 text-red-400 rounded-md border border-red-500/30">{error}</div>}
             </div>
             <footer className="flex justify-end p-4 border-t border-slate-800"><button onClick={onClose} className="bg-slate-700/50 text-slate-300 font-semibold py-2 px-4 rounded-lg hover:bg-slate-700/80">Chiudi</button></footer>
         </div></div>
@@ -522,7 +530,7 @@ const ComponentTable = ({ components, onEdit, onDelete }) => {
     return (
       <div className="text-center p-12 bg-slate-900/50 border border-slate-800/50 rounded-lg shadow-md">
         <h2 className="text-xl text-slate-400">Nessun componente trovato.</h2>
-        <p className="text-slate-500 mt-2">Inizia aggiungendo un nuovo componente.</p>
+        <p className="text-slate-500 mt-2">Inizia aggiungendo un nuovo componente o modifica i filtri di ricerca.</p>
       </div>
     );
   }
@@ -581,6 +589,7 @@ const App = () => {
     const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
     const [editingComponent, setEditingComponent] = useState(null);
     const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
+    const [searchQuery, setSearchQuery] = useState('');
     
     // --- INIZIALIZZAZIONE ---
     useEffect(() => {
@@ -633,6 +642,20 @@ const App = () => {
         document.documentElement.classList.toggle('dark', theme === 'dark');
         localStorage.setItem('theme', theme);
     }, [theme]);
+    
+    // --- LOGICA DI FILTRAGGIO ---
+    const filteredComponents = useMemo(() => {
+        if (!searchQuery) {
+            return components;
+        }
+        const lowercasedQuery = searchQuery.toLowerCase();
+        return components.filter(component =>
+            (component.sekoCode || '').toLowerCase().includes(lowercasedQuery) ||
+            (component.description || '').toLowerCase().includes(lowercasedQuery) ||
+            (component.aselCode || '').toLowerCase().includes(lowercasedQuery) ||
+            (component.lfWmsCode || '').toLowerCase().includes(lowercasedQuery)
+        );
+    }, [components, searchQuery]);
 
     const handleLogin = async (email, password) => {
         setLoginError(null);
@@ -672,8 +695,9 @@ const App = () => {
             if (isEditing) {
                 const originalComponent = components.find(c => c.id === componentToSave.id);
                 const componentWithLog = addLogEntry(originalComponent, 'Modifica', 'Componente modificato.', note);
-                const finalComponent = { ...componentWithLog, ...componentToSave };
-                await setDoc(doc(db, "components", componentToSave.id), finalComponent, { merge: true });
+                const finalComponent = { ...componentToSave, logs: componentWithLog.logs }; // Merge logs with new data
+                delete finalComponent.id;
+                await setDoc(doc(db, "components", componentToSave.id), finalComponent);
             } else {
                 const componentWithLog = addLogEntry(componentToSave, 'Creazione', 'Componente creato.', note);
                 delete componentWithLog.id;
@@ -730,7 +754,23 @@ const App = () => {
                         <button onClick={() => handleOpenModal(null)} className="flex items-center gap-2 bg-electric-blue text-white font-bold py-2 px-5 rounded-lg shadow-lg shadow-electric-blue/20 hover:bg-electric-blue/90"><PlusIcon /> Aggiungi</button>
                     </div>
                 </div>
-                {loading ? <LoadingScreen message="Caricamento componenti..." /> : dbError ? <ErrorScreen title="Errore Database" message={dbError} /> : <ComponentTable components={components} onEdit={handleOpenModal} onDelete={handleDeleteComponent} />}
+                
+                <div className="mb-8">
+                    <div className="relative">
+                        <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-500">
+                            <SearchIcon />
+                        </span>
+                        <input
+                            type="text"
+                            placeholder="Cerca per codice o descrizione..."
+                            value={searchQuery}
+                            onChange={(e) => setSearchQuery(e.target.value)}
+                            className="w-full pl-10 pr-4 py-2 bg-slate-100 dark:bg-slate-900/50 border border-slate-300 dark:border-slate-800/50 rounded-lg text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-electric-blue focus:border-electric-blue transition-colors"
+                        />
+                    </div>
+                </div>
+
+                {loading ? <LoadingScreen message="Caricamento componenti..." /> : dbError ? <ErrorScreen title="Errore Database" message={dbError} /> : <ComponentTable components={filteredComponents} onEdit={handleOpenModal} onDelete={handleDeleteComponent} />}
             </main>
             {isModalOpen && <ComponentModal component={editingComponent} onClose={handleCloseModal} onSave={handleSaveComponent} />}
             {isBomModalOpen && <BomQuoteModal isOpen={isBomModalOpen} onClose={handleCloseBomModal} components={components} />}

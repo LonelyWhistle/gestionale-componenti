@@ -391,30 +391,42 @@ const BomQuoteModal = ({ isOpen, onClose, components }) => {
     };
     
     const handleExport = () => {
-        const dataToExport = quoteResults.flatMap(res => {
-            if (res.status === 'Trovato' && res.component.suppliers.length > 0) {
-                return res.component.suppliers.map(supplier => ({
+        const dataToExport = quoteResults.map(res => {
+            if (res.status === 'Trovato' && res.component.suppliers && res.component.suppliers.length > 0) {
+                // Trova il fornitore con il costo più basso
+                const bestSupplier = res.component.suppliers.reduce((best, current) => {
+                    return current.cost < best.cost ? current : best;
+                }, res.component.suppliers[0]);
+
+                return {
                     'Codice Seko (Input)': res.inputSeko,
+                    'Codice Asel': res.component.aselCode || '',
                     'Stato': res.status,
                     'Descrizione': res.component.description,
-                    'Fornitore': supplier.name,
-                    'Part Number Fornitore': supplier.partNumber,
-                    'Costo (€)': supplier.cost,
-                    'Lead Time': supplier.leadTime,
-                }));
+                    'Fornitore': bestSupplier.name,
+                    'Part Number Fornitore': bestSupplier.partNumber,
+                    'Costo (€)': bestSupplier.cost,
+                    'Lead Time': bestSupplier.leadTime,
+                };
             }
+            
+            // Gestisce i componenti non trovati o senza fornitori
             return {
                 'Codice Seko (Input)': res.inputSeko,
-                'Stato': res.status,
+                'Codice Asel': res.component?.aselCode || '',
+                'Stato': res.status === 'Trovato' ? 'Senza Fornitori' : 'Non Trovato',
                 'Descrizione': res.component?.description || '-',
-                'Fornitore': '-', 'Part Number Fornitore': '-', 'Costo (€)': '-', 'Lead Time': '-',
+                'Fornitore': '-', 
+                'Part Number Fornitore': '-', 
+                'Costo (€)': '-', 
+                'Lead Time': '-',
             };
         });
 
         const worksheet = XLSX.utils.json_to_sheet(dataToExport);
         const workbook = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(workbook, worksheet, 'Quotazione BOM');
-        XLSX.writeFile(workbook, 'quotazione_bom.xlsx');
+        XLSX.utils.book_append_sheet(workbook, worksheet, 'Quotazione BOM Migliore');
+        XLSX.writeFile(workbook, 'quotazione_bom_migliore.xlsx');
     };
 
     if (!isOpen) return null;
@@ -427,26 +439,25 @@ const BomQuoteModal = ({ isOpen, onClose, components }) => {
                     <div><label htmlFor="bom-input" className="block text-sm font-medium text-slate-400 mb-2">Incolla i codici Seko (uno per riga)</label><textarea id="bom-input" rows={8} className="w-full p-3 font-mono bg-slate-800/50 border border-slate-700 rounded-md" placeholder="514846&#10;823301" value={sekoCodes} onChange={(e) => setSekoCodes(e.target.value)} /></div>
                     {searched && (<div><h3 className="text-lg font-semibold mb-4">Risultati</h3>
                         <div className="border border-slate-800 rounded-lg overflow-hidden"><table className="w-full text-sm">
-                            <thead className="text-xs bg-slate-800/80 text-slate-400"><tr><th className="px-4 py-3 font-medium tracking-wider">Seko Input</th><th className="px-4 py-3 font-medium tracking-wider">Stato</th><th className="px-4 py-3 font-medium tracking-wider">Descrizione</th><th className="px-4 py-3 font-medium tracking-wider">Fornitore</th><th className="px-4 py-3 font-medium tracking-wider">Costo</th><th className="px-4 py-3 font-medium tracking-wider">Lead Time</th></tr></thead>
+                            <thead className="text-xs bg-slate-800/80 text-slate-400"><tr><th className="px-4 py-3 font-medium tracking-wider">Seko Input</th><th className="px-4 py-3 font-medium tracking-wider">Stato</th><th className="px-4 py-3 font-medium tracking-wider">Descrizione</th><th className="px-4 py-3 font-medium tracking-wider">Fornitore (Tutti)</th><th className="px-4 py-3 font-medium tracking-wider">Costo</th></tr></thead>
                             <tbody className="divide-y divide-slate-800">{quoteResults.map((res, index) => (
                                <React.Fragment key={index}>{res.status === 'Trovato' && res.component.suppliers.length > 0 ? res.component.suppliers.map((sup, supIndex) => (
-                                   <tr key={`${index}-${supIndex}`} className="hover:bg-slate-800/70">
+                                   <tr key={`${index}-${supIndex}`} className={`hover:bg-slate-800/70 ${supIndex > 0 ? 'text-slate-500' : ''}`}>
                                        <td className="px-4 py-2 font-mono text-electric-blue">{supIndex === 0 ? res.inputSeko : ''}</td>
                                        <td className="px-4 py-2">{supIndex === 0 ? <span className="px-2 py-1 text-xs bg-green-500/10 text-green-400 rounded-full border border-green-500/20">Trovato</span> : ''}</td>
                                        <td className="px-4 py-2">{supIndex === 0 ? res.component.description : ''}</td>
                                        <td className="px-4 py-2">{sup.name}</td>
                                        <td className="px-4 py-2">{sup.cost.toLocaleString('it-IT', { style: 'currency', currency: 'EUR', minimumFractionDigits: 5, maximumFractionDigits: 5 })}</td>
-                                       <td className="px-4 py-2">{sup.leadTime}</td>
                                    </tr>
                                )) : (
-                                   <tr className="hover:bg-slate-800/70"><td className="px-4 py-2 font-mono text-electric-blue">{res.inputSeko}</td><td className="px-4 py-2"><span className={`px-2 py-1 text-xs ${res.status === 'Trovato' ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'} rounded-full`}>{res.status === 'Trovato' ? 'Senza Fornitori' : 'Non Trovato'}</span></td><td className="px-4 py-2">{res.component?.description || '-'}</td><td className="px-4 py-2" colSpan="3">-</td></tr>
+                                   <tr className="hover:bg-slate-800/70"><td className="px-4 py-2 font-mono text-electric-blue">{res.inputSeko}</td><td className="px-4 py-2"><span className={`px-2 py-1 text-xs ${res.status === 'Trovato' ? 'bg-yellow-500/10 text-yellow-400 border border-yellow-500/20' : 'bg-red-500/10 text-red-400 border border-red-500/20'} rounded-full`}>{res.status === 'Trovato' ? 'Senza Fornitori' : 'Non Trovato'}</span></td><td className="px-4 py-2">{res.component?.description || '-'}</td><td className="px-4 py-2" colSpan="2">-</td></tr>
                                )}</React.Fragment>
                             ))}</tbody>
                         </table></div>
                     </div>)}
                 </div>
                 <footer className="flex justify-between items-center p-4 border-t border-slate-800">
-                    <div>{quoteResults.length > 0 && <button onClick={handleExport} className="flex items-center gap-2 bg-green-500/10 text-green-400 font-semibold py-2 px-4 rounded-lg border border-green-500/30 hover:bg-green-500/20"><FileExcelIcon /> Esporta</button>}</div>
+                    <div>{quoteResults.length > 0 && <button onClick={handleExport} className="flex items-center gap-2 bg-green-500/10 text-green-400 font-semibold py-2 px-4 rounded-lg border border-green-500/30 hover:bg-green-500/20"><FileExcelIcon /> Esporta Migliore</button>}</div>
                     <div className="flex items-center gap-3"><button onClick={onClose} className="bg-slate-700/50 text-slate-300 font-semibold py-2 px-4 rounded-lg hover:bg-slate-700/80">Chiudi</button><button onClick={handleSearch} className="flex items-center gap-2 bg-electric-blue text-white font-bold py-2 px-5 rounded-lg shadow-lg shadow-electric-blue/20 hover:bg-electric-blue/90"><SearchIcon /> Cerca</button></div>
                 </footer>
             </div>

@@ -87,6 +87,11 @@ const FileExcelIcon = () => <Icon><path strokeLinecap="round" strokeLinejoin="ro
 const FileImportIcon = () => <Icon><path strokeLinecap="round" strokeLinejoin="round" d="M10 18h4v-2h-4v2zM3 6h18M6 6l.9 12.6a1 1 0 001 .9h8.2a1 1 0 001-.9L18 6M9 6V4a1 1 0 011-1h4a1 1 0 011 1v2" /><path strokeLinecap="round" strokeLinejoin="round" d="M12 10v4m-2-2h4" /></Icon>;
 const SpinnerIcon = ({ className }) => <Icon className={className}><path strokeLinecap="round" strokeLinejoin="round" d="M12 3v3m0 12v3m9-9h-3M6 12H3m16.95 6.95l-2.12-2.12M7.05 7.05L4.93 4.93m14.14 0l-2.12 2.12M7.05 16.95l-2.12 2.12" /></Icon>;
 const AlertTriangleIcon = () => <Icon className="w-12 h-12 text-red-500 mx-auto"><path strokeLinecap="round" strokeLinejoin="round" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" /></Icon>;
+const DashboardIcon = () => <Icon><path strokeLinecap="round" strokeLinejoin="round" d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z" /></Icon>;
+const TableIcon = () => <Icon><path strokeLinecap="round" strokeLinejoin="round" d="M3 4h18M4 8h16M4 12h16M4 16h16" /></Icon>;
+const ChipIcon = () => <Icon><path strokeLinecap="round" strokeLinejoin="round" d="M9 3h6l-3 3-3-3zM9 18h6l-3 3-3-3zM3 9v6l3-3-3-3zM18 9v6l3-3-3-3z" /><path strokeLinecap="round" strokeLinejoin="round" d="M9 9h6v6H9z" /></Icon>;
+const TruckIcon = () => <Icon><path strokeLinecap="round" strokeLinejoin="round" d="M0 11l2-4h11l2 4" /><path strokeLinecap="round" strokeLinejoin="round" d="M16 11h3l2-4h3" /><path strokeLinecap="round" strokeLinejoin="round" d="M1 11v8h2v-8" /><path strokeLinecap="round" strokeLinejoin="round" d="M14 11v8h2v-8" /><path strokeLinecap="round" strokeLinejoin="round" d="M4 19h9" /><path strokeLinecap="round" strokeLinejoin="round" d="M17 19h2" /></Icon>;
+const TrophyIcon = () => <Icon><path strokeLinecap="round" strokeLinejoin="round" d="M12 2L9 5H3v14h18V5h-6l-3-3z" /><path strokeLinecap="round" strokeLinejoin="round" d="M12 11c-1.66 0-3 1.34-3 3s1.34 3 3 3 3-1.34 3-3-1.34-3-3-3z" /></Icon>;
 
 
 // --- COMPONENTI UI ---
@@ -617,6 +622,93 @@ const ComponentTable = ({ components, onEdit, onDelete }) => {
   );
 };
 
+// --- NUOVO COMPONENTE: DASHBOARD ---
+const StatCard = ({ icon, title, value, colorClass }) => (
+    <div className={`bg-slate-900/50 border border-slate-800/50 rounded-xl p-6 flex items-center gap-6 shadow-lg transition-all hover:border-slate-700/80 hover:scale-105`}>
+        <div className={`p-4 rounded-lg bg-slate-800 border border-slate-700 ${colorClass}`}>
+            {icon}
+        </div>
+        <div>
+            <p className="text-slate-400 text-sm">{title}</p>
+            <p className="text-3xl font-bold text-slate-100">{value}</p>
+        </div>
+    </div>
+);
+
+const Dashboard = ({ components }) => {
+    const stats = useMemo(() => {
+        const supplierSet = new Set();
+        const bestPriceSupplierCount = new Map();
+
+        components.forEach(component => {
+            let bestSupplier = null;
+            if (component.suppliers && component.suppliers.length > 0) {
+                component.suppliers.forEach(supplier => {
+                    supplierSet.add(supplier.name);
+                    if (!bestSupplier || supplier.cost < bestSupplier.cost) {
+                        bestSupplier = supplier;
+                    }
+                });
+            }
+            if (bestSupplier) {
+                bestPriceSupplierCount.set(
+                    bestSupplier.name,
+                    (bestPriceSupplierCount.get(bestSupplier.name) || 0) + 1
+                );
+            }
+        });
+
+        const bestSuppliers = Array.from(bestPriceSupplierCount.entries())
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 5); // Mostra i migliori 5
+
+        return {
+            totalComponents: components.length,
+            totalSuppliers: supplierSet.size,
+            bestSuppliers,
+        };
+    }, [components]);
+
+    return (
+        <div>
+             <h1 className="text-3xl md:text-4xl font-bold text-slate-700 dark:text-slate-200 tracking-tight mb-8">Dashboard</h1>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-10">
+                <StatCard 
+                    icon={<ChipIcon className="w-8 h-8"/>} 
+                    title="Componenti Unici" 
+                    value={stats.totalComponents}
+                    colorClass="text-electric-blue"
+                />
+                <StatCard 
+                    icon={<TruckIcon className="w-8 h-8"/>} 
+                    title="Fornitori Totali" 
+                    value={stats.totalSuppliers}
+                    colorClass="text-green-400"
+                />
+            </div>
+
+            <div className="bg-slate-900/50 border border-slate-800/50 rounded-xl p-6 shadow-lg">
+                <h2 className="text-xl font-bold text-slate-100 mb-4 flex items-center gap-3"><TrophyIcon className="text-yellow-400"/>Fornitori con più Best Price</h2>
+                {stats.bestSuppliers.length > 0 ? (
+                    <ul className="space-y-3">
+                        {stats.bestSuppliers.map(([name, count], index) => (
+                             <li key={name} className="flex justify-between items-center bg-slate-800/60 p-4 rounded-lg border border-slate-700/50">
+                                 <div className="flex items-center gap-4">
+                                     <span className="text-lg font-bold text-slate-500 w-6 text-center">{index + 1}</span>
+                                     <p className="font-semibold text-slate-200">{name}</p>
+                                 </div>
+                                 <p className="font-bold text-electric-blue bg-electric-blue/10 px-3 py-1 rounded-full text-sm">{count} componenti</p>
+                             </li>
+                        ))}
+                    </ul>
+                ) : (
+                    <p className="text-slate-500 text-center py-8">Nessun dato sui prezzi disponibile per generare una classifica.</p>
+                )}
+            </div>
+        </div>
+    );
+};
+
 // --- APPLICAZIONE PRINCIPALE ---
 const App = () => {
     // --- STATO ---
@@ -635,6 +727,7 @@ const App = () => {
     const [editingComponent, setEditingComponent] = useState(null);
     const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
     const [searchQuery, setSearchQuery] = useState('');
+    const [activeView, setActiveView] = useState('dashboard'); // 'dashboard' o 'components'
     
     // --- INIZIALIZZAZIONE ---
     useEffect(() => {
@@ -791,31 +884,59 @@ const App = () => {
         <div className="min-h-screen bg-slate-100 dark:bg-slate-950 text-gray-800 dark:text-slate-200">
             <Header theme={theme} toggleTheme={toggleTheme} user={user} onLogout={handleLogout} />
             <main className="container mx-auto p-4 md:p-8">
-                 <div className="flex flex-wrap justify-between items-center mb-8 gap-4">
-                    <h1 className="text-3xl md:text-4xl font-bold text-slate-700 dark:text-slate-200 tracking-tight">Componenti Elettronici</h1>
-                    <div className="flex items-center gap-4">
-                        <button onClick={handleOpenCsvModal} className="flex items-center gap-2 bg-purple-500/10 text-purple-400 font-semibold py-2 px-5 rounded-lg border border-purple-500/30 hover:bg-purple-500/20"><FileImportIcon /> Importa CSV</button>
-                        <button onClick={handleOpenBomModal} className="flex items-center gap-2 bg-green-500/10 text-green-400 font-semibold py-2 px-5 rounded-lg border border-green-500/30 hover:bg-green-500/20"><UploadIcon /> Quota BOM</button>
-                        <button onClick={() => handleOpenModal(null)} className="flex items-center gap-2 bg-electric-blue text-white font-bold py-2 px-5 rounded-lg shadow-lg shadow-electric-blue/20 hover:bg-electric-blue/90"><PlusIcon /> Aggiungi</button>
+                 <div className="mb-8">
+                    <div className="flex items-center gap-2 border-b border-slate-300 dark:border-slate-800 pb-4 mb-8">
+                        <button 
+                            onClick={() => setActiveView('dashboard')}
+                            className={`flex items-center gap-2 font-semibold py-2 px-4 rounded-lg transition-colors ${activeView === 'dashboard' ? 'bg-electric-blue text-white' : 'text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800/50'}`}
+                        >
+                            <DashboardIcon />
+                            Dashboard
+                        </button>
+                        <button 
+                            onClick={() => setActiveView('components')}
+                            className={`flex items-center gap-2 font-semibold py-2 px-4 rounded-lg transition-colors ${activeView === 'components' ? 'bg-electric-blue text-white' : 'text-slate-500 hover:bg-slate-200 dark:hover:bg-slate-800/50'}`}
+                        >
+                            <TableIcon />
+                            Componenti
+                        </button>
                     </div>
-                </div>
-                
-                <div className="mb-8">
-                    <div className="relative">
-                        <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-500">
-                            <SearchIcon />
-                        </span>
-                        <input
-                            type="text"
-                            placeholder="Cerca per codice o descrizione..."
-                            value={searchQuery}
-                            onChange={(e) => setSearchQuery(e.target.value)}
-                            className="w-full pl-10 pr-4 py-2 bg-slate-100 dark:bg-slate-900/50 border border-slate-300 dark:border-slate-800/50 rounded-lg text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-electric-blue focus:border-electric-blue transition-colors"
-                        />
-                    </div>
-                </div>
 
-                {loading ? <LoadingScreen message="Caricamento componenti..." /> : dbError ? <ErrorScreen title="Errore Database" message={dbError} /> : <ComponentTable components={filteredComponents} onEdit={handleOpenModal} onDelete={handleDeleteComponent} />}
+                    {loading ? (
+                        <LoadingScreen message="Caricamento dati..." />
+                    ) : dbError ? (
+                        <ErrorScreen title="Errore Database" message={dbError} />
+                    ) : activeView === 'dashboard' ? (
+                        <Dashboard components={components} />
+                    ) : (
+                       <>
+                            <div className="flex flex-wrap justify-between items-center mb-8 gap-4">
+                                <h1 className="text-3xl md:text-4xl font-bold text-slate-700 dark:text-slate-200 tracking-tight">Componenti Elettronici</h1>
+                                <div className="flex items-center gap-4">
+                                    <button onClick={handleOpenCsvModal} className="flex items-center gap-2 bg-purple-500/10 text-purple-400 font-semibold py-2 px-5 rounded-lg border border-purple-500/30 hover:bg-purple-500/20"><FileImportIcon /> Importa CSV</button>
+                                    <button onClick={handleOpenBomModal} className="flex items-center gap-2 bg-green-500/10 text-green-400 font-semibold py-2 px-5 rounded-lg border border-green-500/30 hover:bg-green-500/20"><UploadIcon /> Quota BOM</button>
+                                    <button onClick={() => handleOpenModal(null)} className="flex items-center gap-2 bg-electric-blue text-white font-bold py-2 px-5 rounded-lg shadow-lg shadow-electric-blue/20 hover:bg-electric-blue/90"><PlusIcon /> Aggiungi</button>
+                                </div>
+                            </div>
+                            
+                            <div className="mb-8">
+                                <div className="relative">
+                                    <span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-500">
+                                        <SearchIcon />
+                                    </span>
+                                    <input
+                                        type="text"
+                                        placeholder="Cerca per codice o descrizione..."
+                                        value={searchQuery}
+                                        onChange={(e) => setSearchQuery(e.target.value)}
+                                        className="w-full pl-10 pr-4 py-2 bg-slate-100 dark:bg-slate-900/50 border border-slate-300 dark:border-slate-800/50 rounded-lg text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-electric-blue focus:border-electric-blue transition-colors"
+                                    />
+                                </div>
+                            </div>
+                            <ComponentTable components={filteredComponents} onEdit={handleOpenModal} onDelete={handleDeleteComponent} />
+                       </>
+                    )}
+                 </div>
             </main>
             {isModalOpen && <ComponentModal component={editingComponent} onClose={handleCloseModal} onSave={handleSaveComponent} />}
             {isBomModalOpen && <BomQuoteModal isOpen={isBomModalOpen} onClose={handleCloseBomModal} components={components} />}
@@ -825,4 +946,3 @@ const App = () => {
 };
 
 export default App;
-

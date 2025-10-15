@@ -408,6 +408,7 @@ const BomQuoteModal = ({ isOpen, onClose, components }) => {
                     'Descrizione': res.component.description,
                     'Fornitore': bestSupplier.name,
                     'Part Number Fornitore': bestSupplier.partNumber,
+                    'Confezione': bestSupplier.packaging || '',
                     'Costo (€)': bestSupplier.cost,
                     'Lead Time': bestSupplier.leadTime,
                 };
@@ -420,7 +421,8 @@ const BomQuoteModal = ({ isOpen, onClose, components }) => {
                 'Stato': res.status === 'Trovato' ? 'Senza Fornitori' : 'Non Trovato',
                 'Descrizione': res.component?.description || '-',
                 'Fornitore': '-', 
-                'Part Number Fornitore': '-', 
+                'Part Number Fornitore': '-',
+                'Confezione': '-',
                 'Costo (€)': '-', 
                 'Lead Time': '-',
             };
@@ -909,4 +911,5 @@ const App = () => {
 };
 
 export default App;
+
 

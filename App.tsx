@@ -17,7 +17,8 @@ import {
     addDoc,
     deleteDoc,
     writeBatch,
-    Timestamp
+    Timestamp,
+    updateDoc
 } from 'firebase/firestore';
 
 // Dichiarazione per la libreria XLSX (per l'import/export)
@@ -523,7 +524,7 @@ const CsvImportModal = ({ isOpen, onClose, onImport }) => {
     
     return (
         <div className="fixed inset-0 bg-black/70 z-50 flex justify-center items-center p-4"><div className="bg-slate-900/80 w-full max-w-2xl max-h-[90vh] flex flex-col rounded-xl border border-slate-700">
-            <header className="flex justify-between items-center p-5 border-b border-slate-800"><h2 className="text-xl font-bold">Importa CSV</h2><button onClick={onClose} className="text-slate-500 hover:text-slate-100"><XIcon /></button></header>
+            <header className="flex justify-between items-center p-5 border-b border-slate-800"><h2 className="text-xl font-bold">Importa Componenti (Crea Nuovi)</h2><button onClick={onClose} className="text-slate-500 hover:text-slate-100"><XIcon /></button></header>
             <div className="p-6 flex-grow overflow-y-auto">
                 <div onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }} onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); }} onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }} onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); if (e.dataTransfer.files?.[0]) handleFileProcess(e.dataTransfer.files[0]); }}
                     className={`relative border-2 border-dashed rounded-lg p-10 text-center transition-colors ${isDragging ? 'border-electric-blue bg-electric-blue/10' : 'border-slate-600'}`}>
@@ -536,6 +537,100 @@ const CsvImportModal = ({ isOpen, onClose, onImport }) => {
             </div>
             <footer className="flex justify-end p-4 border-t border-slate-800"><button onClick={onClose} className="bg-slate-700/50 text-slate-300 font-semibold py-2 px-4 rounded-lg hover:bg-slate-700/80">Chiudi</button></footer>
         </div></div>
+    );
+};
+
+const AselUpdateModal = ({ isOpen, onClose, onUpdate }) => {
+    const [isDragging, setIsDragging] = useState(false);
+    const [error, setError] = useState(null);
+    const [processing, setProcessing] = useState(false);
+
+    const handleFileProcess = useCallback((file) => {
+        if (!file) {
+            setError("Nessun file selezionato.");
+            return;
+        }
+        setError(null);
+        setProcessing(true);
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            try {
+                const data = e.target.result;
+                const workbook = XLSX.read(data, { type: 'binary' });
+                const sheetName = workbook.SheetNames[0];
+                const worksheet = workbook.Sheets[sheetName];
+                const json = XLSX.utils.sheet_to_json(worksheet, { raw: false, header: ['sekoCode', 'aselCode'] });
+
+                // Rimuovi l'intestazione se presente
+                if (json[0] && json[0].sekoCode.toLowerCase().trim() === 'sekocode') {
+                    json.shift();
+                }
+                
+                const updates = json
+                    .map(row => ({
+                        sekoCode: String(row.sekoCode || '').trim(),
+                        aselCode: String(row.aselCode || '').trim(),
+                    }))
+                    .filter(row => row.sekoCode); // Filtra righe senza sekoCode
+
+                if (updates.length === 0) {
+                    setError("Il file non contiene dati validi o le colonne 'sekoCode' e 'aselCode' non sono presenti.");
+                } else {
+                    onUpdate(updates);
+                }
+            } catch (err) {
+                setError(`Errore durante l'elaborazione del file: ${err.message}`);
+            } finally {
+                setProcessing(false);
+            }
+        };
+        reader.onerror = () => {
+            setError("Impossibile leggere il file.");
+            setProcessing(false);
+        };
+        reader.readAsBinaryString(file);
+    }, [onUpdate]);
+    
+    if (!isOpen) return null;
+
+    return (
+        <div className="fixed inset-0 bg-black/70 z-50 flex justify-center items-center p-4">
+            <div className="bg-slate-900/80 w-full max-w-2xl max-h-[90vh] flex flex-col rounded-xl border border-slate-700">
+                <header className="flex justify-between items-center p-5 border-b border-slate-800">
+                    <h2 className="text-xl font-bold">Aggiorna Codici Asel da CSV</h2>
+                    <button onClick={onClose} className="text-slate-500 hover:text-slate-100"><XIcon /></button>
+                </header>
+                <div className="p-6 flex-grow overflow-y-auto">
+                    <div className="p-4 bg-slate-800/50 border border-slate-700 rounded-lg mb-6 text-sm">
+                        <p className="font-semibold text-slate-200">Formato del file CSV/Excel:</p>
+                        <ul className="list-disc list-inside mt-2 text-slate-400 space-y-1">
+                            <li>Il file deve contenere due colonne.</li>
+                            <li>La **prima colonna** deve essere il `sekoCode`.</li>
+                            <li>La **seconda colonna** deve essere il `aselCode` da aggiornare.</li>
+                            <li>Non è necessario che ci siano intestazioni.</li>
+                        </ul>
+                    </div>
+                    <div 
+                        onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }} 
+                        onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); }} 
+                        onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }} 
+                        onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); if (e.dataTransfer.files?.[0]) handleFileProcess(e.dataTransfer.files[0]); }}
+                        className={`relative border-2 border-dashed rounded-lg p-10 text-center transition-colors ${isDragging ? 'border-electric-blue bg-electric-blue/10' : 'border-slate-600'}`}
+                    >
+                        <FileImportIcon className="mx-auto h-12 w-12 text-slate-500"/>
+                        <p className="mt-2 text-slate-300">
+                            <span className="font-semibold text-electric-blue">Trascina un file</span> o clicca per selezionarlo
+                        </p>
+                        <input type="file" className="absolute inset-0 w-full h-full opacity-0 cursor-pointer" onChange={(e) => { if (e.target.files?.[0]) handleFileProcess(e.target.files[0]); }} accept=".csv,.xlsx,.xls" />
+                    </div>
+                    {processing && <p className="text-center mt-4 text-electric-blue">Elaborazione del file in corso...</p>}
+                    {error && <div className="mt-4 p-3 bg-red-500/10 text-red-400 rounded-md border border-red-500/30">{error}</div>}
+                </div>
+                <footer className="flex justify-end p-4 border-t border-slate-800">
+                    <button onClick={onClose} className="bg-slate-700/50 text-slate-300 font-semibold py-2 px-4 rounded-lg hover:bg-slate-700/80">Chiudi</button>
+                </footer>
+            </div>
+        </div>
     );
 };
 
@@ -678,13 +773,14 @@ const Dashboard = ({ components, onNavigate }) => {
     );
 };
 
-const ComponentsView = ({ components, onEdit, onDelete, onOpenModal, onOpenBomModal, onOpenCsvModal, filteredComponents, searchQuery, setSearchQuery, handleExportView }) => (
+const ComponentsView = ({ components, onEdit, onDelete, onOpenModal, onOpenBomModal, onOpenCsvModal, onOpenAselUpdateModal, filteredComponents, searchQuery, setSearchQuery, handleExportView }) => (
     <div>
         <div className="flex flex-wrap justify-between items-center mb-8 gap-4">
             <h1 className="text-3xl md:text-4xl font-bold text-slate-700 dark:text-slate-200 tracking-tight">Componenti Elettronici</h1>
-            <div className="flex items-center gap-4">
-                <button onClick={onOpenCsvModal} className="flex items-center gap-2 bg-purple-500/10 text-purple-400 font-semibold py-2 px-5 rounded-lg border border-purple-500/30 hover:bg-purple-500/20"><FileImportIcon /> Importa CSV</button>
-                <button onClick={onOpenBomModal} className="flex items-center gap-2 bg-green-500/10 text-green-400 font-semibold py-2 px-5 rounded-lg border border-green-500/30 hover:bg-green-500/20"><UploadIcon /> Quota BOM</button>
+            <div className="flex items-center gap-2 flex-wrap">
+                <button onClick={onOpenAselUpdateModal} className="flex items-center gap-2 bg-orange-500/10 text-orange-400 font-semibold py-2 px-4 rounded-lg border border-orange-500/30 hover:bg-orange-500/20">Aggiorna Asel da CSV</button>
+                <button onClick={onOpenCsvModal} className="flex items-center gap-2 bg-purple-500/10 text-purple-400 font-semibold py-2 px-4 rounded-lg border border-purple-500/30 hover:bg-purple-500/20">Importa Nuovi</button>
+                <button onClick={onOpenBomModal} className="flex items-center gap-2 bg-green-500/10 text-green-400 font-semibold py-2 px-4 rounded-lg border border-green-500/30 hover:bg-green-500/20">Quota BOM</button>
                 <button onClick={() => onOpenModal(null)} className="flex items-center gap-2 bg-electric-blue text-white font-bold py-2 px-5 rounded-lg shadow-lg shadow-electric-blue/20 hover:bg-electric-blue/90"><PlusIcon /> Aggiungi</button>
             </div>
         </div>
@@ -732,6 +828,7 @@ const App = () => {
     const [isModalOpen, setIsModalOpen] = useState(false);
     const [isBomModalOpen, setIsBomModalOpen] = useState(false);
     const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
+    const [isAselUpdateModalOpen, setIsAselUpdateModalOpen] = useState(false);
     const [editingComponent, setEditingComponent] = useState(null);
     const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark');
     const [searchQuery, setSearchQuery] = useState('');
@@ -758,7 +855,7 @@ const App = () => {
                            setLoading(true);
                            const componentsCol = collection(db, 'components');
                            const unsubscribeDb = onSnapshot(componentsCol, (snapshot) => {
-                               const componentsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+                               const componentsList = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as ElectronicComponent));
                                setComponents(componentsList);
                                setLoading(false);
                            }, (error) => {
@@ -880,6 +977,51 @@ const App = () => {
         handleCloseCsvModal();
     }, [user]);
 
+    const handleAselUpdateFromCsv = useCallback(async (updates) => {
+        if (!user) return;
+        const db = getFirestore();
+        const batch = writeBatch(db);
+        const componentsBySeko = new Map(components.map(c => [c.sekoCode, c]));
+
+        let updatedCount = 0;
+        let notFoundCount = 0;
+        let noChangeCount = 0;
+
+        for (const update of updates) {
+            const existingComponent = componentsBySeko.get(update.sekoCode);
+            if (existingComponent) {
+                if (existingComponent.aselCode !== update.aselCode) {
+                    const docRef = doc(db, "components", existingComponent.id);
+                    const componentWithLog = addLogEntry(
+                        existingComponent, 
+                        'Aggiornamento Asel Code da CSV', 
+                        `Codice Asel modificato da "${existingComponent.aselCode || ''}" a "${update.aselCode}"`,
+                        'Aggiornamento massivo da file CSV'
+                    );
+                    batch.update(docRef, { 
+                        aselCode: update.aselCode,
+                        logs: componentWithLog.logs 
+                    });
+                    updatedCount++;
+                } else {
+                    noChangeCount++;
+                }
+            } else {
+                notFoundCount++;
+            }
+        }
+
+        try {
+            await batch.commit();
+            alert(`Aggiornamento completato.\n- ${updatedCount} componenti aggiornati.\n- ${noChangeCount} componenti senza modifiche.\n- ${notFoundCount} codici Seko non trovati.`);
+            handleCloseAselUpdateModal();
+        } catch (error) {
+            console.error("Errore durante l'aggiornamento massivo:", error);
+            alert(`Si è verificato un errore: ${error.message}`);
+        }
+    }, [user, components]);
+
+
     const handleExportView = useCallback(() => {
         if (filteredComponents.length === 0) {
             alert("Nessun componente da esportare.");
@@ -927,6 +1069,8 @@ const App = () => {
     const handleCloseBomModal = useCallback(() => setIsBomModalOpen(false), []);
     const handleOpenCsvModal = useCallback(() => setIsCsvModalOpen(true), []);
     const handleCloseCsvModal = useCallback(() => setIsCsvModalOpen(false), []);
+    const handleOpenAselUpdateModal = useCallback(() => setIsAselUpdateModalOpen(true), []);
+    const handleCloseAselUpdateModal = useCallback(() => setIsAselUpdateModalOpen(false), []);
     const toggleTheme = () => setTheme(prev => prev === 'light' ? 'dark' : 'light');
 
     if (configError) return <ErrorScreen title="Errore di Configurazione" message={configError} />;
@@ -956,6 +1100,7 @@ const App = () => {
                         onOpenModal={handleOpenModal}
                         onOpenBomModal={handleOpenBomModal}
                         onOpenCsvModal={handleOpenCsvModal}
+                        onOpenAselUpdateModal={handleOpenAselUpdateModal}
                         filteredComponents={filteredComponents}
                         searchQuery={searchQuery}
                         setSearchQuery={setSearchQuery}
@@ -966,9 +1111,9 @@ const App = () => {
             {isModalOpen && <ComponentModal component={editingComponent} onClose={handleCloseModal} onSave={handleSaveComponent} />}
             {isBomModalOpen && <BomQuoteModal isOpen={isBomModalOpen} onClose={handleCloseBomModal} components={components} />}
             {isCsvModalOpen && <CsvImportModal isOpen={isCsvModalOpen} onClose={handleCloseCsvModal} onImport={handleCsvImport} />}
+            {isAselUpdateModalOpen && <AselUpdateModal isOpen={isAselUpdateModalOpen} onClose={handleCloseAselUpdateModal} onUpdate={handleAselUpdateFromCsv} />}
         </div>
     );
 };
 
 export default App;
-

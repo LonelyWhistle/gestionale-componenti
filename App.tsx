@@ -512,7 +512,14 @@ const CsvImportModal = ({ isOpen, onClose, onImport }) => {
                         });
                     }
                 });
-                onImport(Array.from(componentsMap.values()));
+
+                const componentsToImport = Array.from(componentsMap.values());
+                if (componentsToImport.length === 0) {
+                    setError("Nessun componente valido trovato nel file. Assicurati che il file contenga una colonna 'sekoCode' e che non sia vuoto.");
+                    setProcessing(false);
+                    return;
+                }
+                onImport(componentsToImport);
             } catch (err) { setError(`Errore elaborazione file: ${err.message}`); } 
             finally { setProcessing(false); }
         };
@@ -973,8 +980,15 @@ const App = () => {
             const newDocRef = doc(collection(db, 'components'));
             batch.set(newDocRef, compWithLog);
         });
-        await batch.commit();
-        handleCloseCsvModal();
+
+        try {
+            await batch.commit();
+            alert(`Importazione completata con successo! ${newComponents.length} nuovi componenti sono stati aggiunti.`);
+            handleCloseCsvModal();
+        } catch (err) {
+            console.error("Errore durante l'importazione CSV:", err);
+            alert(`Si è verificato un errore durante il salvataggio dei componenti: ${err.message}`);
+        }
     }, [user]);
 
     const handleAselUpdateFromCsv = useCallback(async (updates) => {

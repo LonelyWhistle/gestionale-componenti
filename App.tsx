@@ -533,6 +533,22 @@ const CsvImportModal = ({ isOpen, onClose, onImport }) => {
         <div className="fixed inset-0 bg-black/70 z-50 flex justify-center items-center p-4"><div className="bg-slate-900/80 w-full max-w-2xl max-h-[90vh] flex flex-col rounded-xl border border-slate-700">
             <header className="flex justify-between items-center p-5 border-b border-slate-800"><h2 className="text-xl font-bold">Importa Componenti (Crea Nuovi)</h2><button onClick={onClose} className="text-slate-500 hover:text-slate-100"><XIcon /></button></header>
             <div className="p-6 flex-grow overflow-y-auto">
+                {/* ISTRUZIONI AGGIUNTE QUI */}
+                <div className="p-4 bg-slate-800/50 border border-slate-700 rounded-lg mb-6 text-sm">
+                    <p className="font-semibold text-slate-200 mb-2">Istruzioni per l'importazione:</p>
+                    <p className="text-slate-400 mb-2">Assicurati che il file Excel/CSV abbia le seguenti <strong>intestazioni esatte</strong> nella prima riga:</p>
+                    <ul className="list-disc list-inside text-slate-300 font-mono space-y-1 ml-2">
+                        <li><span className="text-electric-blue">sekoCode</span> (Obbligatorio)</li>
+                        <li>aselCode</li>
+                        <li>description</li>
+                        <li>supplierName</li>
+                        <li>supplierPartNumber</li>
+                        <li>cost</li>
+                        <li>leadTime</li>
+                        <li>packaging</li>
+                    </ul>
+                </div>
+
                 <div onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }} onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); }} onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }} onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); if (e.dataTransfer.files?.[0]) handleFileProcess(e.dataTransfer.files[0]); }}
                     className={`relative border-2 border-dashed rounded-lg p-10 text-center transition-colors ${isDragging ? 'border-electric-blue bg-electric-blue/10' : 'border-slate-600'}`}>
                     <FileImportIcon className="mx-auto h-12 w-12 text-slate-500"/>

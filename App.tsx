@@ -67,7 +67,7 @@ const ErrorScreen = ({ title, message, details }) => (<div className="min-h-scre
 const InputField = ({ label, name, value, onChange, required, type = "text", readOnly = false, placeholder = '', step = null }) => (<div><label htmlFor={name} className="block text-sm font-medium text-slate-400 mb-1">{label}</label><input type={type} name={name} id={name} value={value} onChange={onChange} required={required} readOnly={readOnly} placeholder={placeholder} step={step} className={`w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-md shadow-sm focus:ring-1 focus:ring-electric-blue focus:border-electric-blue transition-colors ${readOnly ? 'cursor-not-allowed opacity-60' : ''}`} /></div>);
 const LoginPage = ({ onLogin, error }) => { const [e, setE] = useState(''); const [p, setP] = useState(''); const [l, setL] = useState(false); const sub = async (evt) => { evt.preventDefault(); setL(true); await onLogin(e, p); setL(false); }; return (<div className="min-h-screen flex items-center justify-center bg-slate-950 p-4"><div className="w-full max-w-sm"><h1 className="text-3xl font-bold text-center text-electric-blue mb-8 tracking-wider">GESTIONALE COMPONENTI</h1><div className="bg-slate-900/50 border border-slate-800/50 rounded-xl shadow-2xl p-8"><form onSubmit={sub} className="space-y-6"><div><label className="block text-sm font-medium text-slate-400 mb-1">Email</label><input type="email" value={e} onChange={ev=>setE(ev.target.value)} required className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-md shadow-sm focus:ring-1 focus:ring-electric-blue text-slate-200" /></div><div><label className="block text-sm font-medium text-slate-400 mb-1">Password</label><input type="password" value={p} onChange={ev=>setP(ev.target.value)} required className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-md shadow-sm focus:ring-1 focus:ring-electric-blue text-slate-200" /></div>{error && <p className="text-sm text-red-400 text-center">{error}</p>}<div><button type="submit" disabled={l} className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-electric-blue hover:bg-electric-blue/90 disabled:bg-slate-600">{l ? <SpinnerIcon className="w-5 h-5 animate-spin" /> : 'Accedi'}</button></div></form></div></div></div>); };
 
-// --- MODALI (COMPONENT, BOMQUOTE, CSV IMPORT, ASEL UPDATE) ---
+// --- MODALI ---
 const ComponentModal = ({ component, onClose, onSave }) => {
     const [formData, setFormData] = useState({ sekoCode: '', aselCode: '', description: '', suppliers: [], logs: [] });
     const [lfWmsCode, setLfWmsCode] = useState('');
@@ -124,7 +124,7 @@ const AselUpdateModal = ({ isOpen, onClose, onUpdate }) => {
     if (!isOpen) return null; return (<div className="fixed inset-0 bg-black/70 z-50 flex justify-center items-center p-4"><div className="bg-slate-900/80 p-6 rounded-xl border border-slate-700"><h2 className="text-xl font-bold mb-4">Update Asel</h2><input type="file" onChange={e=>handleFile(e.target.files[0])} /><button onClick={onClose} className="mt-4 text-slate-400">Chiudi</button></div></div>);
 };
 
-// --- COMPONENTE PRODUCT MODAL (ALGORITMO MIGLIORATO) ---
+// --- COMPONENTE PRODUCT MODAL (INTELLIGENTE: PATTERN RECOGNITION) ---
 const ProductModal = ({ isOpen, onClose, onSave, product }) => {
     const [name, setName] = useState('');
     const [code, setCode] = useState('');
@@ -138,6 +138,85 @@ const ProductModal = ({ isOpen, onClose, onSave, product }) => {
     }, [product]);
 
     const cleanCode = (c) => String(c).replace(/^0+/, '').trim();
+
+    // Questa funzione implementa la "Pattern Recognition" invece della ricerca headers
+    const extractBomDataSmartly = (items) => {
+        // 1. Raggruppa per coordinate X (Colonne Verticali)
+        // Arrotondiamo X per gestire piccoli disallineamenti
+        const columns = {};
+        items.forEach(item => {
+            const xKey = Math.round(item.x / 10) * 10; // Raggruppa ogni 10px
+            if (!columns[xKey]) columns[xKey] = [];
+            columns[xKey].push(item);
+        });
+
+        // 2. Analizza il contenuto di ogni colonna per capire cos'è
+        let bestCodeColumn = null;
+        let bestQtyColumn = null;
+        let maxCodeScore = 0;
+        let maxQtyScore = 0;
+
+        Object.keys(columns).forEach(key => {
+            const colItems = columns[key];
+            let codeScore = 0;
+            let qtyScore = 0;
+
+            colItems.forEach(i => {
+                const txt = i.str.trim();
+                // Pattern Codice: Lunghezza 5-15, Alfanumerico, Spesso inizia con 0
+                if (/^[A-Z0-9\-\.]{5,15}$/.test(txt) && txt.length > 4) {
+                    // Bonus se inizia con '0000' (tipico Seko)
+                    if (txt.startsWith('0000')) codeScore += 3;
+                    else codeScore += 1;
+                }
+                // Pattern Quantità: Numeri piccoli (1, 2, 4, 10)
+                if (/^[0-9]{1,3}([\.,][0-9]+)?$/.test(txt)) {
+                    const val = parseFloat(txt.replace(',', '.'));
+                    if (!isNaN(val) && val > 0 && val < 1000) qtyScore += 1;
+                }
+            });
+
+            // Assegna ruolo alla colonna
+            if (codeScore > maxCodeScore && codeScore > 2) { // Almeno 2 codici trovati
+                maxCodeScore = codeScore;
+                bestCodeColumn = colItems;
+            }
+            // Per la Qty, spesso è a destra del codice, ma qui valutiamo solo il contenuto
+            if (qtyScore > maxQtyScore && qtyScore > 0) {
+                // Hack: evitiamo che la colonna codici venga scambiata per qty se ha molti numeri
+                if (codeScore < qtyScore) {
+                    maxQtyScore = qtyScore;
+                    bestQtyColumn = colItems;
+                }
+            }
+        });
+
+        if (!bestCodeColumn || !bestQtyColumn) return null;
+
+        // 3. Allinea Code e Qty basandosi sulla coordinata Y (Riga)
+        const extracted = [];
+        const yTolerance = 5; // Pixel di tolleranza verticale
+
+        bestCodeColumn.forEach(cItem => {
+            const rawCode = cItem.str.trim();
+            // Ignora header se catturati per sbaglio
+            if (['code', 'part', 'number', 'codice'].some(k => rawCode.toLowerCase().includes(k))) return;
+
+            // Trova la Qty corrispondente (stessa Y)
+            const qItem = bestQtyColumn.find(q => Math.abs(q.y - cItem.y) < yTolerance);
+            
+            if (qItem) {
+                const qVal = parseFloat(qItem.str.replace(',', '.').replace(/[^0-9.]/g, ''));
+                const cleanedCode = cleanCode(rawCode);
+                
+                if (cleanedCode && !isNaN(qVal) && qVal > 0) {
+                    extracted.push({ sekoCode: cleanedCode, quantity: qVal });
+                }
+            }
+        });
+
+        return extracted;
+    };
 
     const handleFile = async (e) => {
         const file = e.target.files[0];
@@ -160,84 +239,18 @@ const ProductModal = ({ isOpen, onClose, onSave, product }) => {
                     allTextItems = [...allTextItems, ...textContent.items.map(item => ({ 
                         str: item.str.trim(), 
                         x: item.transform[4], 
-                        y: item.transform[5], 
-                        h: item.height 
+                        y: item.transform[5] 
                     }))];
                 }
 
-                // 1. Cerca intestazioni
-                const codeKeywords = ['part code', 'partcode', 'part number', 'codice', 'code'];
-                const qtyKeywords = ['q.ty', 'q.tà', 'qty', 'quantity', 'quantità'];
+                // Usa il nuovo algoritmo "Intelligente"
+                const extracted = extractBomDataSmartly(allTextItems);
 
-                let codeColX = null;
-                let qtyColX = null;
-                let headerY = null;
-
-                for (const item of allTextItems) {
-                    const txt = item.str.toLowerCase();
-                    if (codeKeywords.some(k => txt.includes(k))) {
-                        const companionQty = allTextItems.find(
-                            qItem => Math.abs(qItem.y - item.y) < 15 && qtyKeywords.some(k => qItem.str.toLowerCase().includes(k))
-                        );
-                        if (companionQty) {
-                            codeColX = item.x;
-                            qtyColX = companionQty.x;
-                            headerY = item.y;
-                            break;
-                        }
-                    }
-                }
-
-                // 2. Fallback: Cerca pattern dati (0000... e numeri brevi)
-                if (codeColX === null) {
-                    const candidateLines = [];
-                    allTextItems.forEach(item => {
-                       const existingLine = candidateLines.find(l => Math.abs(l.y - item.y) < 5);
-                       if (existingLine) existingLine.items.push(item);
-                       else candidateLines.push({ y: item.y, items: [item] });
-                    });
-
-                    for (const line of candidateLines) {
-                        const codeItem = line.items.find(i => i.str.startsWith('0000') && i.str.length > 6);
-                        const qtyItem = line.items.find(i => !isNaN(parseFloat(i.str)) && i.str.length < 4 && i.x > (codeItem ? codeItem.x : 0));
-                        if (codeItem && qtyItem) {
-                            codeColX = codeItem.x;
-                            qtyColX = qtyItem.x;
-                            headerY = line.y + 50;
-                            break;
-                        }
-                    }
-                }
-
-                if (codeColX !== null && qtyColX !== null) {
-                    const xTol = 50;
-                    const lines = [];
-                    allTextItems.forEach(item => {
-                        if (Math.abs(item.y - headerY) < 5) return; 
-                        let line = lines.find(l => Math.abs(l.y - item.y) < 5);
-                        if (!line) { line = { y: item.y, items: [] }; lines.push(line); }
-                        line.items.push(item);
-                    });
-
-                    lines.forEach(line => {
-                        const codeItem = line.items.find(i => Math.abs(i.x - codeColX) < xTol);
-                        const qtyItem = line.items.find(i => Math.abs(i.x - qtyColX) < xTol);
-                        if (codeItem && qtyItem) {
-                            const rawCode = codeItem.str.trim();
-                            if (codeKeywords.some(k => rawCode.toLowerCase().includes(k))) return;
-                            const cleaned = cleanCode(rawCode);
-                            const q = parseFloat(qtyItem.str.replace(',', '.'));
-                            if (cleaned && !isNaN(q) && q > 0) {
-                                newBom.push({ sekoCode: cleaned, quantity: q });
-                            }
-                        }
-                    });
+                if (extracted && extracted.length > 0) {
+                    setBom(extracted);
                 } else {
-                    setFileError("Impossibile identificare la struttura della BOM. Assicurati che ci siano 'Part Code' e 'Q.ty'.");
+                    setFileError("Analisi Pattern fallita. Il PDF non sembra contenere colonne di codici e quantità riconoscibili.");
                 }
-
-                if (newBom.length > 0) setBom(newBom);
-                else if (codeColX !== null) setFileError("Struttura trovata ma nessun dato estratto.");
 
             } catch (err) { console.error(err); setFileError("Errore PDF: " + err.message); }
             setIsProcessing(false);
@@ -272,11 +285,29 @@ const ProductModal = ({ isOpen, onClose, onSave, product }) => {
 
     if (!isOpen) return null;
     return (
-        <div className="fixed inset-0 bg-black/70 z-50 flex justify-center items-center p-4 backdrop-blur-sm"><div className="bg-slate-900/80 backdrop-blur-xl border border-slate-700 rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col"><header className="p-5 border-b border-slate-800 flex justify-between"><h2 className="text-xl font-bold text-white">{product ? 'Modifica Prodotto' : 'Nuovo Prodotto'}</h2><button onClick={onClose} className="text-slate-500 hover:text-white"><XIcon /></button></header><div className="p-6 space-y-4 flex-grow overflow-y-auto"><div className="grid grid-cols-2 gap-4"><InputField label="Nome" name="pname" value={name} onChange={(e) => setName(e.target.value)} required /><InputField label="Codice" name="pcode" value={code} onChange={(e) => setCode(e.target.value)} required /></div><div><label className="block text-sm font-medium text-slate-400 mb-1">Carica BOM (Sovrascrive)</label><div className="relative border border-slate-700 bg-slate-800/50 rounded-md p-4 text-center hover:bg-slate-800 transition-colors"><input type="file" accept=".csv,.xlsx,.xls,.pdf" onChange={handleFile} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"/><div className="flex flex-col items-center">{isProcessing ? <SpinnerIcon className="animate-spin text-electric-blue w-8 h-8"/> : <div className="flex gap-2 text-electric-blue"><FileExcelIcon /><FilePdfIcon /></div>}<p className="text-sm text-slate-300 mt-2">{isProcessing ? "Analisi..." : "Trascina PDF o Excel"}</p></div></div>{fileError && <p className="text-red-400 text-sm mt-2 p-2 bg-red-500/10 rounded border border-red-500/20">{fileError}</p>}</div>{bom.length > 0 && (<div className="mt-4"><div className="flex justify-between items-end mb-2"><label className="text-sm font-medium text-slate-400">Anteprima ({bom.length})</label><button onClick={() => setBom([])} className="text-xs text-red-400 hover:underline">Svuota</button></div><div className="border border-slate-700 rounded-lg overflow-hidden max-h-60 overflow-y-auto"><table className="w-full text-sm text-left text-slate-300"><thead className="bg-slate-800 text-slate-400 sticky top-0"><tr><th className="p-2">Codice</th><th className="p-2 text-center">Q.tà</th><th className="p-2 w-8"></th></tr></thead><tbody className="divide-y divide-slate-700">{bom.map((b, i) => (<tr key={i} className="hover:bg-slate-800/50"><td className="p-2 font-mono">{b.sekoCode}</td><td className="p-2 text-center">{b.quantity}</td><td className="p-2 text-center"><button onClick={() => setBom(bom.filter((_,idx)=>idx!==i))} className="text-slate-500 hover:text-red-400"><XIcon className="w-4 h-4"/></button></td></tr>))}</tbody></table></div></div>)}</div><footer className="p-4 border-t border-slate-800 flex justify-end"><button onClick={onClose} className="mr-2 px-4 py-2 text-slate-300 hover:text-white">Annulla</button><button onClick={handleSubmit} disabled={bom.length === 0 || isProcessing} className="bg-electric-blue text-white font-bold py-2 px-4 rounded-lg hover:bg-electric-blue/90 disabled:bg-slate-700 disabled:text-slate-500 transition-all">{product ? 'Aggiorna' : 'Salva'}</button></footer></div></div>
+        <div className="fixed inset-0 bg-black/70 z-50 flex justify-center items-center p-4 backdrop-blur-sm"><div className="bg-slate-900/80 backdrop-blur-xl border border-slate-700 rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col"><header className="p-5 border-b border-slate-800 flex justify-between"><h2 className="text-xl font-bold text-white">{product ? 'Modifica Prodotto' : 'Nuovo Prodotto'}</h2><button onClick={onClose} className="text-slate-500 hover:text-white"><XIcon /></button></header><div className="p-6 space-y-4 flex-grow overflow-y-auto"><div className="grid grid-cols-2 gap-4"><InputField label="Nome" name="pname" value={name} onChange={(e) => setName(e.target.value)} required /><InputField label="Codice" name="pcode" value={code} onChange={(e) => setCode(e.target.value)} required /></div><div><label className="block text-sm font-medium text-slate-400 mb-1">Carica BOM (Sovrascrive)</label><div className="relative border border-slate-700 bg-slate-800/50 rounded-md p-4 text-center hover:bg-slate-800 transition-colors"><input type="file" accept=".csv,.xlsx,.xls,.pdf" onChange={handleFile} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"/><div className="flex flex-col items-center">{isProcessing ? <SpinnerIcon className="animate-spin text-electric-blue w-8 h-8"/> : <div className="flex gap-2 text-electric-blue"><FileExcelIcon /><FilePdfIcon /></div>}<p className="text-sm text-slate-300 mt-2">{isProcessing ? "Analisi Intelligente..." : "Trascina PDF o Excel"}</p></div></div>{fileError && <p className="text-red-400 text-sm mt-2 p-2 bg-red-500/10 rounded border border-red-500/20">{fileError}</p>}</div>{bom.length > 0 && (<div className="mt-4"><div className="flex justify-between items-end mb-2"><label className="text-sm font-medium text-slate-400">Anteprima ({bom.length})</label><button onClick={() => setBom([])} className="text-xs text-red-400 hover:underline">Svuota</button></div><div className="border border-slate-700 rounded-lg overflow-hidden max-h-60 overflow-y-auto"><table className="w-full text-sm text-left text-slate-300"><thead className="bg-slate-800 text-slate-400 sticky top-0"><tr><th className="p-2">Codice</th><th className="p-2 text-center">Q.tà</th><th className="p-2 w-8"></th></tr></thead><tbody className="divide-y divide-slate-700">{bom.map((b, i) => (<tr key={i} className="hover:bg-slate-800/50"><td className="p-2 font-mono">{b.sekoCode}</td><td className="p-2 text-center">{b.quantity}</td><td className="p-2 text-center"><button onClick={() => setBom(bom.filter((_,idx)=>idx!==i))} className="text-slate-500 hover:text-red-400"><XIcon className="w-4 h-4"/></button></td></tr>))}</tbody></table></div></div>)}</div><footer className="p-4 border-t border-slate-800 flex justify-end"><button onClick={onClose} className="mr-2 px-4 py-2 text-slate-300 hover:text-white">Annulla</button><button onClick={handleSubmit} disabled={bom.length === 0 || isProcessing} className="bg-electric-blue text-white font-bold py-2 px-4 rounded-lg hover:bg-electric-blue/90 disabled:bg-slate-700 disabled:text-slate-500 transition-all">{product ? 'Aggiorna' : 'Salva'}</button></footer></div></div>
     );
 };
 
-// --- DASHBOARD (VIEW) ---
+// --- HEADER ---
+const Header = ({ theme, toggleTheme, user, onLogout }) => ( 
+    <header className="sticky top-0 z-40 bg-slate-100/80 dark:bg-slate-950/75 backdrop-blur-lg border-b border-slate-300/10 dark:border-slate-500/30 transition-colors">
+      <div className="container mx-auto px-4 md:px-8 py-4 flex justify-between items-center">
+        <h1 className="text-2xl font-bold text-electric-blue dark:text-electric-blue tracking-wider">GESTIONALE</h1>
+        <div className="flex items-center gap-4">
+          {user && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-slate-500 dark:text-slate-400 hidden sm:inline">{user.email}</span>
+              <button onClick={onLogout} className="text-sm bg-slate-200/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 font-semibold py-1.5 px-3 rounded-md hover:bg-slate-300 dark:hover:bg-slate-700/80 transition-colors">Logout</button>
+            </div>
+          )}
+          <button onClick={toggleTheme} className="p-2 rounded-full text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800/50 transition-colors">{theme === 'light' ? <MoonIcon /> : <SunIcon />}</button>
+        </div>
+      </div>
+    </header>
+);
+
+// --- DASHBOARD ---
 const Dashboard = ({ components }) => {
     const stats = useMemo(() => {
         const totalComponents = components.length;
@@ -297,16 +328,6 @@ const Dashboard = ({ components }) => {
              <div className="bg-slate-900/50 border border-slate-800/50 p-6 rounded-xl"><h2 className="text-lg font-semibold text-slate-200 mb-4">Top Fornitori per Miglior Prezzo</h2>{stats.sortedBestSuppliers.length > 0 ? (<ul className="space-y-3">{stats.sortedBestSuppliers.map(([name, count], index) => (<li key={name} className="flex items-center justify-between p-3 bg-slate-800/60 rounded-lg"><div className="flex items-center gap-4"><span className="text-sm font-bold text-slate-500 w-6 text-center">{index + 1}</span><p className="font-semibold text-slate-100">{name}</p></div><p className="text-sm text-electric-blue font-semibold bg-electric-blue/10 px-3 py-1 rounded-full">{count}</p></li>))}</ul>) : (<p className="text-slate-500 text-center py-4">Nessun dato sui prezzi disponibile.</p>)}</div>
         </div>
     );
-};
-
-// --- TABLE COMPONENTI ---
-const ComponentTable = ({ components, onEdit, onDelete }) => {
-  if (components.length === 0) return <div className="text-center p-12 bg-slate-900/50 border border-slate-800/50 rounded-lg shadow-md"><h2 className="text-xl text-slate-400">Nessun componente trovato.</h2></div>;
-  return (
-    <div className="bg-slate-500/5 dark:bg-slate-900/50 border border-slate-300/10 dark:border-slate-800/50 rounded-xl overflow-hidden shadow-2xl shadow-slate-950/50">
-      <div className="overflow-x-auto"><table className="w-full text-sm text-left text-slate-600 dark:text-slate-300"><thead className="text-xs text-slate-700 dark:text-slate-400 bg-slate-200/50 dark:bg-slate-800/80"><tr><th scope="col" className="px-6 py-4 font-medium tracking-wider">Codici</th><th scope="col" className="px-6 py-4 font-medium tracking-wider">Descrizione</th><th scope="col" className="px-6 py-4 font-medium tracking-wider text-center">Fornitori</th><th scope="col" className="px-6 py-4 font-medium tracking-wider text-right">Azioni</th></tr></thead><tbody className="divide-y divide-slate-200/5 dark:divide-slate-800/80">{components.map((component) => (<tr key={component.id} className="hover:bg-slate-400/5 dark:hover:bg-slate-800/70 transition-colors duration-200 group"><td className="px-6 py-4 whitespace-nowrap"><span className="font-mono text-electric-blue">{component.sekoCode}</span>{component.aselCode && <span className="font-sans text-green-400 ml-2">({component.aselCode})</span>}</td><td className="px-6 py-4 max-w-xs truncate" title={component.description}>{component.description}</td><td className="px-6 py-4 text-center"><span className="bg-electric-blue/10 text-electric-blue-light text-xs font-bold px-3 py-1 rounded-full border border-electric-blue/20">{component.suppliers.length}</span></td><td className="px-6 py-4 text-right"><div className="flex justify-end items-center gap-2 opacity-50 group-hover:opacity-100 transition-opacity"><button onClick={() => onEdit(component)} className="p-2 rounded-md hover:bg-slate-700/50 text-slate-400 hover:text-electric-blue transition-colors"><EditIcon /></button><button onClick={() => onDelete(component.id)} className="p-2 rounded-md hover:bg-slate-700/50 text-slate-400 hover:text-red-500 transition-colors"><TrashIcon /></button></div></td></tr>))}</tbody></table></div>
-    </div>
-  );
 };
 
 // --- COMPONENTS VIEW ---
@@ -330,7 +351,7 @@ const ComponentsView = ({ components, onEdit, onDelete, onOpenModal, onOpenBomMo
     </div>
 );
 
-// --- FORECAST VIEW (CON EDIT/DELETE) ---
+// --- FORECAST VIEW ---
 const ForecastView = ({ products, components, onAddProduct, onEditProduct, onDeleteProduct }) => {
     const [plan, setPlan] = useState([{ productId: '', quantity: 0 }]); const [results, setResults] = useState(null);
     const handlePlanChange = (index, field, value) => { const newPlan = [...plan]; newPlan[index][field] = value; setPlan(newPlan); };
@@ -339,62 +360,8 @@ const ForecastView = ({ products, components, onAddProduct, onEditProduct, onDel
     return (<div className="grid grid-cols-1 lg:grid-cols-3 gap-8"><div className="lg:col-span-1 space-y-6"><div className="bg-slate-900/50 border border-slate-800/50 p-6 rounded-xl"><div className="flex justify-between items-center mb-4"><h2 className="text-lg font-bold text-slate-200">Prodotti / BOM</h2><button onClick={onAddProduct} className="text-xs bg-electric-blue px-2 py-1 rounded text-white">+ Nuovo</button></div><div className="max-h-60 overflow-y-auto space-y-2 pr-1">{products.length===0?<p className="text-slate-500 text-sm">Nessun prodotto.</p>:products.map(p=>(<div key={p.id} className="p-3 bg-slate-800/50 rounded border border-slate-700/50 flex justify-between items-center"><div><p className="font-bold text-slate-200 text-sm">{p.name}</p><p className="text-xs text-slate-400">{p.code}</p></div><div className="flex items-center gap-2"><span className="text-xs bg-slate-700 px-2 py-0.5 rounded text-slate-300">{p.bom.length}</span><button onClick={()=>onEditProduct(p)} className="text-slate-500 hover:text-electric-blue p-1"><EditIcon/></button><button onClick={()=>onDeleteProduct(p.id)} className="text-slate-500 hover:text-red-500 p-1"><TrashIcon/></button></div></div>))}</div></div><div className="bg-slate-900/50 border border-slate-800/50 p-6 rounded-xl"><h2 className="text-lg font-bold text-slate-200 mb-4">Piano Produzione</h2>{plan.map((row, idx) => (<div key={idx} className="flex gap-2 items-end mb-2"><div className="flex-grow"><label className="text-xs text-slate-400">Prodotto</label><select className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm text-white" value={row.productId} onChange={(e) => handlePlanChange(idx, 'productId', e.target.value)}><option value="">Seleziona...</option>{products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div><div className="w-24"><label className="text-xs text-slate-400">Q.tà</label><input type="number" className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm text-white" value={row.quantity} onChange={(e) => handlePlanChange(idx, 'quantity', e.target.value)} /></div>{plan.length>1 && <button onClick={()=>setPlan(plan.filter((_,i)=>i!==idx))} className="text-red-400 p-2"><XIcon/></button>}</div>))}<button onClick={()=>setPlan([...plan,{productId:'',quantity:0}])} className="text-xs text-electric-blue mt-2">+ Riga</button><button onClick={calculateForecast} className="w-full mt-6 bg-electric-blue text-white font-bold py-2 rounded shadow-lg hover:bg-electric-blue/90">Calcola</button></div></div><div className="lg:col-span-2 bg-slate-900/50 border border-slate-800/50 p-6 rounded-xl flex flex-col min-h-[500px]"><div className="flex justify-between items-center mb-4"><h2 className="text-lg font-bold text-slate-200">Risultato</h2>{results && <button onClick={exportForecast} className="text-green-400 border border-green-500/30 px-3 py-1 rounded text-sm">Export Excel</button>}</div>{!results ? <div className="flex-grow flex items-center justify-center text-slate-500"><p>Configura il piano.</p></div> : <div className="overflow-x-auto flex-grow"><table className="w-full text-sm text-left text-slate-300"><thead className="text-xs text-slate-400 bg-slate-800/50"><tr><th className="p-3">Codice</th><th className="p-3">Desc</th><th className="p-3 text-center">Totale</th><th className="p-3">Dettaglio</th></tr></thead><tbody className="divide-y divide-slate-800">{results.map((r, i) => (<tr key={i} className="hover:bg-slate-800/30"><td className="p-3 font-mono text-electric-blue font-bold">{r.code}</td><td className="p-3 truncate max-w-xs">{r.desc}</td><td className="p-3 text-center font-bold text-white text-lg">{r.tot}</td><td className="p-3"><div className="flex flex-wrap gap-1">{r.b.map((b,bi)=>(<span key={bi} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-700 text-slate-300">{b.p}: <span className="text-white ml-1 font-bold">{b.tot}</span></span>))}</div></td></tr>))}</tbody></table></div>}</div></div>);
 };
 
-// --- HEADER ---
-const Header = ({ theme, toggleTheme, user, onLogout }) => ( 
-    <header className="sticky top-0 z-40 bg-slate-100/80 dark:bg-slate-950/75 backdrop-blur-lg border-b border-slate-300/10 dark:border-slate-500/30 transition-colors">
-      <div className="container mx-auto px-4 md:px-8 py-4 flex justify-between items-center">
-        <h1 className="text-2xl font-bold text-electric-blue dark:text-electric-blue tracking-wider">GESTIONALE</h1>
-        <div className="flex items-center gap-4">
-          {user && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-slate-500 dark:text-slate-400 hidden sm:inline">{user.email}</span>
-              <button onClick={onLogout} className="text-sm bg-slate-200/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 font-semibold py-1.5 px-3 rounded-md hover:bg-slate-300 dark:hover:bg-slate-700/80 transition-colors">Logout</button>
-            </div>
-          )}
-          <button onClick={toggleTheme} className="p-2 rounded-full text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800/50 transition-colors">{theme === 'light' ? <MoonIcon /> : <SunIcon />}</button>
-        </div>
-      </div>
-    </header>
-);
-
 // --- APP MAIN ---
 const App = () => {
     const [user, setUser] = useState(null); const [authReady, setAuthReady] = useState(false); const [loginError, setLoginError] = useState(null); const [configError, setConfigError] = useState(null);
     const [components, setComponents] = useState([]); const [products, setProducts] = useState([]); const [loading, setLoading] = useState(true); const [dbError, setDbError] = useState(null);
-    const [isModalOpen, setIsModalOpen] = useState(false); const [isBomModalOpen, setIsBomModalOpen] = useState(false); const [isCsvModalOpen, setIsCsvModalOpen] = useState(false); const [isAselUpdateModalOpen, setIsAselUpdateModalOpen] = useState(false); const [isProductModalOpen, setIsProductModalOpen] = useState(false);
-    const [editingComponent, setEditingComponent] = useState(null); const [editingProduct, setEditingProduct] = useState(null);
-    const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark'); const [searchQuery, setSearchQuery] = useState(''); const [currentView, setCurrentView] = useState('dashboard');
-
-    useEffect(() => {
-        if (!checkFirebaseConfig(firebaseConfig)) { setConfigError("Configurazione Firebase mancante."); return; }
-        try { const app = initializeApp(firebaseConfig); const auth = getAuth(app); const db = getFirestore(app);
-            setPersistence(auth, browserLocalPersistence).then(() => {
-                const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
-                    setUser(currentUser); setAuthReady(true);
-                    if (currentUser) { setLoading(true);
-                       const unsubComp = onSnapshot(collection(db, 'components'), (snap) => { setComponents(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))); setLoading(false); }, (err) => { console.error(err); setDbError("Err Comp."); setLoading(false); });
-                       const unsubProd = onSnapshot(collection(db, 'products'), (snap) => { setProducts(snap.docs.map(doc => ({ id: doc.id, ...doc.data() }))); });
-                       return () => { unsubComp(); unsubProd(); };
-                    } else { setComponents([]); setProducts([]); setLoading(false); }
-                }); return () => unsubscribeAuth();
-            }).catch(console.error);
-        } catch (error) { console.error(error); setConfigError("Errore Init."); }
-    }, []);
-    useEffect(() => { document.documentElement.classList.toggle('dark', theme === 'dark'); localStorage.setItem('theme', theme); }, [theme]);
-    const filteredComponents = useMemo(() => { if (!searchQuery) return components; const q = searchQuery.toLowerCase(); return components.filter(c => (c.sekoCode||'').toLowerCase().includes(q) || (c.description||'').toLowerCase().includes(q) || (c.aselCode||'').toLowerCase().includes(q) || c.suppliers.some(s => (s.name||'').toLowerCase().includes(q))); }, [components, searchQuery]);
-    const handleLogin = async (e, p) => { setLoginError(null); try { await signInWithEmailAndPassword(getAuth(), e, p); } catch { setLoginError("Credenziali non valide."); } };
-    const handleLogout = async () => await signOut(getAuth());
-    const addLogEntry = (obj, action, details, note) => { if (!user) return obj; const newLog = { id: `log_${Date.now()}`, timestamp: Timestamp.now().toDate().toISOString(), userId: user.uid, username: user.email, action, details, note }; return { ...obj, logs: [newLog, ...(obj.logs || [])] }; };
-    const handleSaveComponent = useCallback(async (data, note) => { if (!user) return; const db = getFirestore(); try { if (data.id) { const orig = components.find(c => c.id === data.id); const wLog = addLogEntry(orig, 'Modifica', 'Componente modificato.', note); const final = { ...data, logs: wLog.logs }; delete final.id; await setDoc(doc(db, "components", data.id), final); } else { const wLog = addLogEntry(data, 'Creazione', 'Componente creato.', note); delete wLog.id; await addDoc(collection(db, "components"), wLog); } setIsModalOpen(false); setEditingComponent(null); } catch (err) { alert("Errore salvataggio."); } }, [user, components]);
-    const handleDeleteComponent = useCallback(async (id) => { if (window.confirm('Eliminare?')) await deleteDoc(doc(getFirestore(), "components", id)); }, []);
-    const handleCsvImport = useCallback(async (list) => { if (!user) return; const db = getFirestore(); const batch = writeBatch(db); list.forEach(c => { const wl = addLogEntry(c, 'Import CSV', 'Creato.', 'Massiva'); const ref = doc(collection(db, 'components')); batch.set(ref, wl); }); try { await batch.commit(); alert("Import completato."); setIsCsvModalOpen(false); } catch (e) { alert(e.message); } }, [user]);
-    const handleAselUpdate = useCallback(async (updates) => { if (!user) return; const db = getFirestore(); const batch = writeBatch(db); const map = new Map(components.map(c => [c.sekoCode, c])); updates.forEach(u => { const exist = map.get(u.sekoCode); if (exist && exist.aselCode !== u.aselCode) { const wl = addLogEntry(exist, 'Update Asel', `Da ${exist.aselCode} a ${u.aselCode}`, 'CSV Update'); batch.update(doc(db, "components", exist.id), { aselCode: u.aselCode, logs: wl.logs }); } }); try { await batch.commit(); alert("Aggiornamento completato."); setIsAselUpdateModalOpen(false); } catch(e) { alert(e.message); } }, [user, components]);
-    
-    const handleSaveProduct = useCallback(async (productData) => { if (!user) return; const db = getFirestore(); try { if (productData.id) { const { id, ...data } = productData; await setDoc(doc(db, "products", id), { ...data, updatedAt: Timestamp.now().toDate().toISOString() }, { merge: true }); } else { await addDoc(collection(db, "products"), { ...productData, createdAt: Timestamp.now().toDate().toISOString() }); } } catch (e) { console.error(e); alert("Errore salvataggio."); } }, [user]);
-    const handleDeleteProduct = useCallback(async (id) => { if (!user) return; if (window.confirm("Eliminare questo prodotto?")) { try { await deleteDoc(doc(getFirestore(), "products", id)); } catch(e) { alert("Errore."); } } }, [user]);
-    const handleExportView = useCallback(() => { const data = filteredComponents.flatMap(c => (c.suppliers.length ? c.suppliers : [{}]).map(s => ({ 'Codice': c.sekoCode, 'Descrizione': c.description, 'Fornitore': s.name||'N/D', 'Costo': s.cost||0 }))); XLSX.writeFile(XLSX.utils.book_newWithSheets({ "Vista": XLSX.utils.json_to_sheet(data) }), 'export.xlsx'); }, [filteredComponents]);
-    const toggleTheme = () => setTheme(p => p === 'light' ? 'dark' : 'light');
-    if (configError) return <ErrorScreen title="Config Error" message={configError} />; if (!authReady) return <LoadingScreen message="Auth..." />; if (!user) return <LoginPage onLogin={handleLogin} error={loginError} />;
-    return (<div className="min-h-screen bg-slate-100 dark:bg-slate-950 text-gray-800 dark:text-slate-200"><Header theme={theme} toggleTheme={toggleTheme} user={user} onLogout={handleLogout} /><main className="container mx-auto p-4 md:p-8"><div className="flex items-center gap-4 mb-8 border-b border-slate-800 pb-4 overflow-x-auto"><button onClick={() => setCurrentView('dashboard')} className={`flex items-center gap-2 font-semibold py-2 px-4 rounded-lg whitespace-nowrap transition-colors ${currentView === 'dashboard' ? 'bg-electric-blue text-white' : 'bg-slate-800/50 text-slate-300 hover:bg-slate-700'}`}><ChartBarIcon /> Dashboard</button><button onClick={() => setCurrentView('components')} className={`flex items-center gap-2 font-semibold py-2 px-4 rounded-lg whitespace-nowrap transition-colors ${currentView === 'components' ? 'bg-electric-blue text-white' : 'bg-slate-800/50 text-slate-300 hover:bg-slate-700'}`}><DocumentDuplicateIcon /> Componenti</button><button onClick={() => setCurrentView('forecast')} className={`flex items-center gap-2 font-semibold py-2 px-4 rounded-lg whitespace-nowrap transition-colors ${currentView === 'forecast' ? 'bg-electric-blue text-white' : 'bg-slate-800/50 text-slate-300 hover:bg-slate-700'}`}><CalculatorIcon /> Forecast & BOM</button></div>{loading ? <LoadingScreen message="Loading..." /> : dbError ? <ErrorScreen title="DB Error" message={dbError} /> : (<>{currentView === 'dashboard' && <Dashboard components={components} />}{currentView === 'components' && <ComponentsView components={components} onEdit={(c) => {setEditingComponent(c); setIsModalOpen(true);}} onDelete={handleDeleteComponent} onOpenModal={() => {setEditingComponent(null); setIsModalOpen(true);}} onOpenBomModal={() => setIsBomModalOpen(true)} onOpenCsvModal={() => setIsCsvModalOpen(true)} onOpenAselUpdateModal={() => setIsAselUpdateModalOpen(true)} filteredComponents={filteredComponents} searchQuery={searchQuery} setSearchQuery={setSearchQuery} handleExportView={handleExportView} />}{currentView === 'forecast' && <ForecastView products={products} components={components} onAddProduct={() => { setEditingProduct(null); setIsProductModalOpen(true); }} onEditProduct={(p) => { setEditingProduct(p); setIsProductModalOpen(true); }} onDeleteProduct={handleDeleteProduct} />}</>)}</main>{isModalOpen && <ComponentModal component={editingComponent} onClose={() => setIsModalOpen(false)} onSave={handleSaveComponent} />}{isBomModalOpen && <BomQuoteModal isOpen={isBomModalOpen} onClose={() => setIsBomModalOpen(false)} components={components} />}{isCsvModalOpen && <CsvImportModal isOpen={isCsvModalOpen} onClose={() => setIsCsvModalOpen(false)} onImport={handleCsvImport} />}{isAselUpdateModalOpen && <AselUpdateModal isOpen={isAselUpdateModalOpen} onClose={() => setIsAselUpdateModalOpen(false)} onUpdate={handleAselUpdate} />}{isProductModalOpen && <ProductModal isOpen={isProductModalOpen} onClose={() => setIsProductModalOpen(false)} onSave={handleSaveProduct} product={editingProduct} />}</div>);
-};
-export default App;
+    const [is

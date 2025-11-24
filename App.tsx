@@ -21,15 +21,12 @@ import {
     updateDoc
 } from 'firebase/firestore';
 
-// Importazioni per PDF (Caricate dinamicamente nel codice per evitare errori di build se manca il pacchetto)
-import * as pdfjsLib from 'pdfjs-dist';
+// --- IMPORTAZIONI LIBRERIE ---
+// Importiamo XLSX correttamente per evitare errori "XLSX is undefined"
+import * as XLSX from 'xlsx';
 
-// Configurazione Worker PDF (Necessaria per pdfjs-dist)
-// Nota: In un ambiente Vite/Webpack standard, questo punta al file worker nella node_modules
-pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
-
-// Dichiarazione per la libreria XLSX
-declare const XLSX: any;
+// NOTA: pdfjs-dist non lo importiamo qui in alto per evitare schermate nere all'avvio.
+// Lo importeremo dinamicamente solo quando serve (nella funzione handleFile).
 
 // --- TIPI DI DATI ---
 interface Supplier {
@@ -119,7 +116,7 @@ const ErrorScreen = ({ title, message, details }) => (<div className="min-h-scre
 const InputField = ({ label, name, value, onChange, required, type = "text", readOnly = false, placeholder = '', step = null }) => (<div><label htmlFor={name} className="block text-sm font-medium text-slate-400 mb-1">{label}</label><input type={type} name={name} id={name} value={value} onChange={onChange} required={required} readOnly={readOnly} placeholder={placeholder} step={step} className={`w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-md shadow-sm focus:ring-1 focus:ring-electric-blue focus:border-electric-blue transition-colors ${readOnly ? 'cursor-not-allowed opacity-60' : ''}`} /></div>);
 const LoginPage = ({ onLogin, error }) => { const [e, setE] = useState(''); const [p, setP] = useState(''); const [l, setL] = useState(false); const sub = async (evt) => { evt.preventDefault(); setL(true); await onLogin(e, p); setL(false); }; return (<div className="min-h-screen flex items-center justify-center bg-slate-950 p-4"><div className="w-full max-w-sm"><h1 className="text-3xl font-bold text-center text-electric-blue mb-8 tracking-wider">GESTIONALE COMPONENTI</h1><div className="bg-slate-900/50 border border-slate-800/50 rounded-xl shadow-2xl p-8"><form onSubmit={sub} className="space-y-6"><div><label className="block text-sm font-medium text-slate-400 mb-1">Email</label><input type="email" value={e} onChange={ev=>setE(ev.target.value)} required className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-md shadow-sm focus:ring-1 focus:ring-electric-blue text-slate-200" /></div><div><label className="block text-sm font-medium text-slate-400 mb-1">Password</label><input type="password" value={p} onChange={ev=>setP(ev.target.value)} required className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-md shadow-sm focus:ring-1 focus:ring-electric-blue text-slate-200" /></div>{error && <p className="text-sm text-red-400 text-center">{error}</p>}<div><button type="submit" disabled={l} className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-electric-blue hover:bg-electric-blue/90 disabled:bg-slate-600">{l ? <SpinnerIcon className="w-5 h-5 animate-spin" /> : 'Accedi'}</button></div></form></div></div></div>); };
 
-// --- MODALI ESISTENTI (ComponentModal, CsvImportModal, etc.) ---
+// --- MODALI ---
 const ComponentModal = ({ component, onClose, onSave }) => {
     const [formData, setFormData] = useState({ sekoCode: '', aselCode: '', description: '', suppliers: [], logs: [] });
     const [lfWmsCode, setLfWmsCode] = useState('');
@@ -171,18 +168,48 @@ const BomQuoteModal = ({ isOpen, onClose, components }) => {
 
 const CsvImportModal = ({ isOpen, onClose, onImport }) => {
     const [isDragging, setIsDragging] = useState(false); const [error, setError] = useState(null); const [processing, setProcessing] = useState(false);
-    const handleFileProcess = useCallback((file) => { if (!file) return; setError(null); setProcessing(true); const reader = new FileReader(); reader.onload = (e) => { try { const json = XLSX.utils.sheet_to_json(XLSX.read(e.target.result, { type: 'binary' }).Sheets[XLSX.read(e.target.result, { type: 'binary' }).SheetNames[0]], { raw: false }); const list = []; json.forEach(r => { const s = String(r.sekoCode||'').trim(); if(s) list.push({ sekoCode: s, aselCode: String(r.aselCode||''), lfWmsCode: `AS${s}`, description: String(r.description||''), suppliers: r.supplierName ? [{ id:`s_${s}_0`, name:r.supplierName, cost: parseFloat(r.cost)||0, partNumber: r.supplierPartNumber||'' }] : [] }); }); if(list.length===0) setError("No data."); else onImport(list); } catch(err){ setError(err.message); } finally { setProcessing(false); } }; reader.readAsBinaryString(file); }, [onImport]);
+    const handleFileProcess = useCallback((file) => { 
+        if (!file) return; 
+        setError(null); 
+        setProcessing(true); 
+        const reader = new FileReader(); 
+        reader.onload = (e) => { 
+            try { 
+                const wb = XLSX.read(e.target.result, { type: 'binary' });
+                const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], { raw: false }); 
+                const list = []; 
+                json.forEach(r => { 
+                    const s = String(r.sekoCode||'').trim(); 
+                    if(s) list.push({ sekoCode: s, aselCode: String(r.aselCode||''), lfWmsCode: `AS${s}`, description: String(r.description||''), suppliers: r.supplierName ? [{ id:`s_${s}_0`, name:r.supplierName, cost: parseFloat(r.cost)||0, partNumber: r.supplierPartNumber||'' }] : [] }); 
+                }); 
+                if(list.length===0) setError("No data."); else onImport(list); 
+            } catch(err){ setError(err.message); } finally { setProcessing(false); } 
+        }; 
+        reader.readAsBinaryString(file); 
+    }, [onImport]);
+    
     if (!isOpen) return null;
     return (<div className="fixed inset-0 bg-black/70 z-50 flex justify-center items-center p-4"><div className="bg-slate-900/80 w-full max-w-2xl border border-slate-700 rounded-xl p-6 text-center"><h2 className="text-xl font-bold mb-4">Importa CSV/Excel</h2><input type="file" onChange={e=>handleFileProcess(e.target.files[0])} className="block w-full text-slate-400 file:bg-electric-blue file:text-white file:border-0 file:rounded file:px-4 file:py-2 mb-4" />{processing && <p>Elaborazione...</p>}{error && <p className="text-red-400">{error}</p>}<button onClick={onClose} className="text-slate-400 mt-4">Chiudi</button></div></div>);
 };
 
 const AselUpdateModal = ({ isOpen, onClose, onUpdate }) => {
     const [processing, setProcessing] = useState(false);
-    const handleFile = (file) => { if(!file) return; setProcessing(true); const r = new FileReader(); r.onload = (e) => { const json = XLSX.utils.sheet_to_json(XLSX.read(e.target.result, {type:'binary'}).Sheets[XLSX.read(e.target.result, {type:'binary'}).SheetNames[0]], {header:['s','a']}); onUpdate(json.map(x=>({sekoCode:String(x.s), aselCode:String(x.a)}))); setProcessing(false); }; r.readAsBinaryString(file); };
+    const handleFile = (file) => { 
+        if(!file) return; 
+        setProcessing(true); 
+        const r = new FileReader(); 
+        r.onload = (e) => { 
+            const wb = XLSX.read(e.target.result, {type:'binary'});
+            const json = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {header:['s','a']}); 
+            onUpdate(json.map(x=>({sekoCode:String(x.s), aselCode:String(x.a)}))); 
+            setProcessing(false); 
+        }; 
+        r.readAsBinaryString(file); 
+    };
     if (!isOpen) return null; return (<div className="fixed inset-0 bg-black/70 z-50 flex justify-center items-center p-4"><div className="bg-slate-900/80 p-6 rounded-xl border border-slate-700"><h2 className="text-xl font-bold mb-4">Update Asel</h2><input type="file" onChange={e=>handleFile(e.target.files[0])} /><button onClick={onClose} className="mt-4 text-slate-400">Chiudi</button></div></div>);
 };
 
-// --- COMPONENTE PRODUCT MODAL AGGIORNATO CON SUPPORTO PDF ---
+// --- COMPONENTE PRODUCT MODAL CON IMPORTAZIONE DINAMICA PDF ---
 
 const ProductModal = ({ isOpen, onClose, onSave }) => {
     const [name, setName] = useState('');
@@ -201,9 +228,14 @@ const ProductModal = ({ isOpen, onClose, onSave }) => {
         setBom([]);
         setIsProcessing(true);
 
-        // GESTIONE PDF
+        // GESTIONE PDF (CARICAMENTO DINAMICO per evitare schermata nera)
         if (file.type === 'application/pdf') {
             try {
+                // Importa PDF.js solo ora!
+                const pdfjsLib = await import('pdfjs-dist');
+                // Configura il worker dinamicamente
+                pdfjsLib.GlobalWorkerOptions.workerSrc = `//cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+
                 const fileUrl = URL.createObjectURL(file);
                 const pdf = await pdfjsLib.getDocument(fileUrl).promise;
                 let allItems = [];
@@ -212,30 +244,27 @@ const ProductModal = ({ isOpen, onClose, onSave }) => {
                 for (let i = 1; i <= pdf.numPages; i++) {
                     const page = await pdf.getPage(i);
                     const textContent = await page.getTextContent();
-                    // Normalizza gli item con coordinate e testo
                     const pageItems = textContent.items.map(item => ({
                         str: item.str,
-                        x: item.transform[4], // Coordinata X
-                        y: item.transform[5], // Coordinata Y
+                        x: item.transform[4],
+                        y: item.transform[5],
                         w: item.width
                     }));
                     allItems = [...allItems, ...pageItems];
                 }
 
-                // Raggruppa per righe (Y simili)
-                const tolerance = 5; // Tolleranza pixel verticale
+                const tolerance = 5;
                 const rows = [];
-                allItems.sort((a, b) => b.y - a.y); // Ordina dall'alto in basso
+                allItems.sort((a, b) => b.y - a.y);
 
                 if (allItems.length > 0) {
                     let currentRow = [allItems[0]];
                     let currentY = allItems[0].y;
-
                     for (let i = 1; i < allItems.length; i++) {
                         if (Math.abs(allItems[i].y - currentY) < tolerance) {
                             currentRow.push(allItems[i]);
                         } else {
-                            rows.push(currentRow.sort((a, b) => a.x - b.x)); // Ordina riga da sx a dx
+                            rows.push(currentRow.sort((a, b) => a.x - b.x));
                             currentRow = [allItems[i]];
                             currentY = allItems[i].y;
                         }
@@ -243,25 +272,20 @@ const ProductModal = ({ isOpen, onClose, onSave }) => {
                     rows.push(currentRow.sort((a, b) => a.x - b.x));
                 }
 
-                // Cerca header
                 let codeColX = null;
                 let qtyColX = null;
                 let headerFound = false;
-
-                // Parole chiave (case insensitive)
                 const codeKeywords = ['codice', 'code', 'part number', 'articolo'];
                 const qtyKeywords = ['q.tà', 'q.ta', 'qta', 'qty', 'quantity', 'quantità'];
 
                 for (const row of rows) {
-                    const rowText = row.map(r => r.str.toLowerCase());
                     const codeIdx = row.findIndex(item => codeKeywords.some(k => item.str.toLowerCase().includes(k)));
                     const qtyIdx = row.findIndex(item => qtyKeywords.some(k => item.str.toLowerCase().includes(k)));
-
                     if (codeIdx !== -1 && qtyIdx !== -1) {
                         codeColX = row[codeIdx].x;
                         qtyColX = row[qtyIdx].x;
                         headerFound = true;
-                        break; // Header trovato
+                        break;
                     }
                 }
 
@@ -271,55 +295,41 @@ const ProductModal = ({ isOpen, onClose, onSave }) => {
                     return;
                 }
 
-                // Estrae dati usando le coordinate X delle colonne trovate
-                const xTolerance = 20; // Tolleranza orizzontale per l'allineamento colonna
+                const xTolerance = 20;
                 const parsedBom = [];
 
                 for (const row of rows) {
-                    // Cerca elemento che cade nella colonna Codice
                     const codeItem = row.find(item => Math.abs(item.x - codeColX) < xTolerance);
-                    // Cerca elemento che cade nella colonna Quantità
                     const qtyItem = row.find(item => Math.abs(item.x - qtyColX) < xTolerance);
 
                     if (codeItem && qtyItem) {
-                        // Pulisce il codice rimuovendo zeri iniziali
                         const rawCode = codeItem.str.trim();
-                        
-                        // Ignora righe che sembrano header ripetuti o vuote
                         if (codeKeywords.some(k => rawCode.toLowerCase().includes(k))) continue;
-                        
                         const cleanedCode = cleanCode(rawCode);
-                        
-                        // Pulisce quantità (gestisce virgole come decimali)
                         const qtyStr = qtyItem.str.replace(',', '.').replace(/[^0-9.]/g, '');
                         const qty = parseFloat(qtyStr);
-
                         if (cleanedCode && qty > 0) {
                             parsedBom.push({ sekoCode: cleanedCode, quantity: qty });
                         }
                     }
                 }
 
-                if (parsedBom.length === 0) {
-                    setFileError("Nessun componente valido estratto. Verifica il layout del PDF.");
-                } else {
-                    setBom(parsedBom);
-                }
+                if (parsedBom.length === 0) setFileError("Nessun componente valido estratto.");
+                else setBom(parsedBom);
 
             } catch (err) {
                 console.error(err);
-                setFileError("Errore durante la lettura del PDF: " + err.message);
+                setFileError("Errore lettura PDF: " + err.message);
             }
             setIsProcessing(false);
             return;
         }
 
-        // GESTIONE EXCEL/CSV (Logica esistente)
+        // GESTIONE EXCEL/CSV
         const reader = new FileReader();
         reader.onload = (evt) => {
             try {
-                const bstr = evt.target.result;
-                const wb = XLSX.read(bstr, { type: 'binary' });
+                const wb = XLSX.read(evt.target.result, { type: 'binary' });
                 const ws = wb.Sheets[wb.SheetNames[0]];
                 const data = XLSX.utils.sheet_to_json(ws, { header: 1 }); 
                 const parsedBom = [];
@@ -328,11 +338,10 @@ const ProductModal = ({ isOpen, onClose, onSave }) => {
                     const compCode = String(row[0] || '').trim();
                     const qty = parseFloat(row[1]);
                     if (compCode && qty > 0) {
-                        // APPLICA PULIZIA CODICE ANCHE QUI
                         parsedBom.push({ sekoCode: cleanCode(compCode), quantity: qty });
                     }
                 });
-                if (parsedBom.length === 0) setFileError("Nessun componente valido trovato nel file.");
+                if (parsedBom.length === 0) setFileError("Nessun componente valido trovato.");
                 else setBom(parsedBom);
             } catch (err) { setFileError("Errore lettura file."); }
             setIsProcessing(false);
@@ -387,7 +396,7 @@ const ForecastView = ({ products, components, onAddProduct }) => {
     return (<div className="grid grid-cols-1 lg:grid-cols-3 gap-8"><div className="lg:col-span-1 space-y-6"><div className="bg-slate-900/50 border border-slate-800/50 p-6 rounded-xl"><div className="flex justify-between items-center mb-4"><h2 className="text-lg font-bold text-slate-200">Prodotti / BOM</h2><button onClick={() => onAddProduct(true)} className="text-xs bg-electric-blue px-2 py-1 rounded text-white">+ Nuovo</button></div><div className="max-h-60 overflow-y-auto space-y-2">{products.map(p => (<div key={p.id} className="p-3 bg-slate-800/50 rounded border border-slate-700/50 flex justify-between"><div><p className="font-bold text-slate-200 text-sm">{p.name}</p><p className="text-xs text-slate-400">{p.code}</p></div><span className="text-xs bg-slate-700 px-2 py-0.5 rounded text-slate-300">{p.bom.length} comp.</span></div>))}</div></div><div className="bg-slate-900/50 border border-slate-800/50 p-6 rounded-xl"><h2 className="text-lg font-bold text-slate-200 mb-4">Piano Produzione</h2>{plan.map((row, idx) => (<div key={idx} className="flex gap-2 items-end mb-2"><div className="flex-grow"><label className="text-xs text-slate-400">Prodotto</label><select className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm text-white" value={row.productId} onChange={(e) => handlePlanChange(idx, 'productId', e.target.value)}><option value="">Select...</option>{products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div><div className="w-24"><label className="text-xs text-slate-400">Qty</label><input type="number" className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm text-white" value={row.quantity} onChange={(e) => handlePlanChange(idx, 'quantity', e.target.value)} /></div>{plan.length>1 && <button onClick={()=>setPlan(plan.filter((_,i)=>i!==idx))} className="text-red-400 p-2"><XIcon/></button>}</div>))}<button onClick={()=>setPlan([...plan,{productId:'',quantity:0}])} className="text-xs text-electric-blue">+ Riga</button><button onClick={calculateForecast} className="w-full mt-6 bg-electric-blue text-white font-bold py-2 rounded shadow-lg hover:bg-electric-blue/90">Calcola</button></div></div><div className="lg:col-span-2 bg-slate-900/50 border border-slate-800/50 p-6 rounded-xl flex flex-col min-h-[500px]"><div className="flex justify-between items-center mb-4"><h2 className="text-lg font-bold text-slate-200">Risultato</h2>{results && <button onClick={exportForecast} className="text-green-400 border border-green-500/30 px-3 py-1 rounded text-sm">Export Excel</button>}</div>{!results ? <div className="flex-grow flex items-center justify-center text-slate-500"><p>Imposta piano e calcola.</p></div> : <div className="overflow-x-auto"><table className="w-full text-sm text-left text-slate-300"><thead className="text-xs text-slate-400 bg-slate-800/50"><tr><th className="p-3">Codice</th><th className="p-3">Desc</th><th className="p-3 text-center">Totale</th><th className="p-3">Dettagli</th></tr></thead><tbody className="divide-y divide-slate-800">{results.map((r, i) => (<tr key={i} className="hover:bg-slate-800/30"><td className="p-3 font-mono text-electric-blue">{r.code}</td><td className="p-3 truncate max-w-xs">{r.desc}</td><td className="p-3 text-center font-bold text-white">{r.tot}</td><td className="p-3 text-xs text-slate-400">{r.b.map((b,bi)=><div key={bi}>{b.p}: {b.tot}</div>)}</td></tr>))}</tbody></table></div>}</div></div>);
 };
 
-// --- HEADER & APP MAIN (Invariati, tranne per l'aggiunta dello stato Products) ---
+// --- HEADER & APP MAIN ---
 const Header = ({ theme, toggleTheme, user, onLogout }) => ( <header className="sticky top-0 z-40 bg-slate-100/80 dark:bg-slate-950/75 backdrop-blur-lg border-b border-slate-300/10 dark:border-slate-500/30 transition-colors"><div className="container mx-auto px-4 md:px-8 py-4 flex justify-between items-center"><h1 className="text-2xl font-bold text-electric-blue dark:text-electric-blue tracking-wider">GESTIONALE</h1><div className="flex items-center gap-4">{user && (<div className="flex items-center gap-2"><span className="text-sm text-slate-500 dark:text-slate-400 hidden sm:inline">{user.email}</span><button onClick={onLogout} className="text-sm bg-slate-200/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 font-semibold py-1.5 px-3 rounded-md hover:bg-slate-300 dark:hover:bg-slate-700/80 transition-colors">Logout</button></div>)}<button onClick={toggleTheme} className="p-2 rounded-full text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800/50 transition-colors">{theme === 'light' ? <MoonIcon /> : <SunIcon />}</button></div></div></header>);
 
 const App = () => {

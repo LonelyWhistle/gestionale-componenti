@@ -205,7 +205,7 @@ const AselUpdateModal = ({ isOpen, onClose, onUpdate }) => {
     if (!isOpen) return null; return (<div className="fixed inset-0 bg-black/70 z-50 flex justify-center items-center p-4"><div className="bg-slate-900/80 p-6 rounded-xl border border-slate-700"><h2 className="text-xl font-bold mb-4">Update Asel</h2><input type="file" onChange={e=>handleFile(e.target.files[0])} /><button onClick={onClose} className="mt-4 text-slate-400">Chiudi</button></div></div>);
 };
 
-// --- COMPONENTE PRODUCT MODAL CON IMPORTAZIONE DINAMICA PDF ---
+// --- COMPONENTE PRODUCT MODAL CON IMPORTAZIONE DINAMICA PDF (CORRETTO) ---
 const ProductModal = ({ isOpen, onClose, onSave }) => {
     const [name, setName] = useState('');
     const [code, setCode] = useState('');
@@ -222,7 +222,6 @@ const ProductModal = ({ isOpen, onClose, onSave }) => {
         if (file.type === 'application/pdf') {
             try {
                 const pdfjsLib = await import('pdfjs-dist');
-                // FIX: Usa unpkg per caricare la versione .mjs del worker ed evitare errori di caricamento modulo
                 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
 
                 const fileUrl = URL.createObjectURL(file);
@@ -234,7 +233,9 @@ const ProductModal = ({ isOpen, onClose, onSave }) => {
                     const pageItems = textContent.items.map(item => ({ str: item.str, x: item.transform[4], y: item.transform[5], w: item.width }));
                     allItems = [...allItems, ...pageItems];
                 }
-                const tolerance = 5;
+                
+                // Aumentata la tolleranza verticale a 10 per gestire disallineamenti leggeri
+                const tolerance = 10; 
                 const rows = [];
                 allItems.sort((a, b) => b.y - a.y);
                 if (allItems.length > 0) {
@@ -254,8 +255,11 @@ const ProductModal = ({ isOpen, onClose, onSave }) => {
                 let codeColX = null;
                 let qtyColX = null;
                 let headerFound = false;
-                const codeKeywords = ['codice', 'code', 'part number', 'articolo'];
-                const qtyKeywords = ['q.tà', 'q.ta', 'qta', 'qty', 'quantity', 'quantità'];
+                
+                // AGGIUNTO 'part code' e 'q.ty' alle parole chiave
+                const codeKeywords = ['part code', 'codice', 'code', 'part number', 'articolo'];
+                const qtyKeywords = ['q.ty', 'q.tà', 'q.ta', 'qta', 'qty', 'quantity', 'quantità'];
+                
                 for (const row of rows) {
                     const codeIdx = row.findIndex(item => codeKeywords.some(k => item.str.toLowerCase().includes(k)));
                     const qtyIdx = row.findIndex(item => qtyKeywords.some(k => item.str.toLowerCase().includes(k)));

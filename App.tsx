@@ -67,7 +67,7 @@ const ErrorScreen = ({ title, message, details }) => (<div className="min-h-scre
 const InputField = ({ label, name, value, onChange, required, type = "text", readOnly = false, placeholder = '', step = null }) => (<div><label htmlFor={name} className="block text-sm font-medium text-slate-400 mb-1">{label}</label><input type={type} name={name} id={name} value={value} onChange={onChange} required={required} readOnly={readOnly} placeholder={placeholder} step={step} className={`w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-md shadow-sm focus:ring-1 focus:ring-electric-blue focus:border-electric-blue transition-colors ${readOnly ? 'cursor-not-allowed opacity-60' : ''}`} /></div>);
 const LoginPage = ({ onLogin, error }) => { const [e, setE] = useState(''); const [p, setP] = useState(''); const [l, setL] = useState(false); const sub = async (evt) => { evt.preventDefault(); setL(true); await onLogin(e, p); setL(false); }; return (<div className="min-h-screen flex items-center justify-center bg-slate-950 p-4"><div className="w-full max-w-sm"><h1 className="text-3xl font-bold text-center text-electric-blue mb-8 tracking-wider">GESTIONALE COMPONENTI</h1><div className="bg-slate-900/50 border border-slate-800/50 rounded-xl shadow-2xl p-8"><form onSubmit={sub} className="space-y-6"><div><label className="block text-sm font-medium text-slate-400 mb-1">Email</label><input type="email" value={e} onChange={ev=>setE(ev.target.value)} required className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-md shadow-sm focus:ring-1 focus:ring-electric-blue text-slate-200" /></div><div><label className="block text-sm font-medium text-slate-400 mb-1">Password</label><input type="password" value={p} onChange={ev=>setP(ev.target.value)} required className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-md shadow-sm focus:ring-1 focus:ring-electric-blue text-slate-200" /></div>{error && <p className="text-sm text-red-400 text-center">{error}</p>}<div><button type="submit" disabled={l} className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-electric-blue hover:bg-electric-blue/90 disabled:bg-slate-600">{l ? <SpinnerIcon className="w-5 h-5 animate-spin" /> : 'Accedi'}</button></div></form></div></div></div>); };
 
-// --- MODALI ESISTENTI (COMPONENTI, BOMRAPIDA, IMPORT CSV) ---
+// --- MODALI (COMPONENT, BOMQUOTE, CSV IMPORT, ASEL UPDATE) ---
 const ComponentModal = ({ component, onClose, onSave }) => {
     const [formData, setFormData] = useState({ sekoCode: '', aselCode: '', description: '', suppliers: [], logs: [] });
     const [lfWmsCode, setLfWmsCode] = useState('');
@@ -124,7 +124,7 @@ const AselUpdateModal = ({ isOpen, onClose, onUpdate }) => {
     if (!isOpen) return null; return (<div className="fixed inset-0 bg-black/70 z-50 flex justify-center items-center p-4"><div className="bg-slate-900/80 p-6 rounded-xl border border-slate-700"><h2 className="text-xl font-bold mb-4">Update Asel</h2><input type="file" onChange={e=>handleFile(e.target.files[0])} /><button onClick={onClose} className="mt-4 text-slate-400">Chiudi</button></div></div>);
 };
 
-// --- COMPONENTE PRODUCT MODAL (ALGORITMO DI RICONOSCIMENTO MIGLIORATO) ---
+// --- COMPONENTE PRODUCT MODAL (ALGORITMO MIGLIORATO) ---
 const ProductModal = ({ isOpen, onClose, onSave, product }) => {
     const [name, setName] = useState('');
     const [code, setCode] = useState('');
@@ -157,7 +157,6 @@ const ProductModal = ({ isOpen, onClose, onSave, product }) => {
                 for (let i = 1; i <= pdf.numPages; i++) {
                     const page = await pdf.getPage(i);
                     const textContent = await page.getTextContent();
-                    // Normalizziamo coordinate e testo
                     allTextItems = [...allTextItems, ...textContent.items.map(item => ({ 
                         str: item.str.trim(), 
                         x: item.transform[4], 
@@ -166,8 +165,7 @@ const ProductModal = ({ isOpen, onClose, onSave, product }) => {
                     }))];
                 }
 
-                // ALGORITMO DI RICONOSCIMENTO COLONNE
-                // 1. Cerca parole chiave per le intestazioni
+                // 1. Cerca intestazioni
                 const codeKeywords = ['part code', 'partcode', 'part number', 'codice', 'code'];
                 const qtyKeywords = ['q.ty', 'q.tà', 'qty', 'quantity', 'quantità'];
 
@@ -175,31 +173,24 @@ const ProductModal = ({ isOpen, onClose, onSave, product }) => {
                 let qtyColX = null;
                 let headerY = null;
 
-                // Cerca tra tutti gli item quelli che matchano
                 for (const item of allTextItems) {
                     const txt = item.str.toLowerCase();
-                    
-                    // Se troviamo un possibile header CODE
                     if (codeKeywords.some(k => txt.includes(k))) {
-                        // Cerca un header QTY sulla stessa linea (tolleranza verticale aumentata a 15px)
                         const companionQty = allTextItems.find(
                             qItem => Math.abs(qItem.y - item.y) < 15 && qtyKeywords.some(k => qItem.str.toLowerCase().includes(k))
                         );
                         if (companionQty) {
                             codeColX = item.x;
                             qtyColX = companionQty.x;
-                            headerY = item.y; // Y dell'intestazione
+                            headerY = item.y;
                             break;
                         }
                     }
                 }
 
-                // PIANO B: Se non trova le intestazioni per nome, cerca per "Pattern Dati"
-                // Cerca una colonna che ha codici tipo "0000..." e una colonna di numeri interi vicina
+                // 2. Fallback: Cerca pattern dati (0000... e numeri brevi)
                 if (codeColX === null) {
-                    console.log("Intestazioni non trovate, provo euristica dati...");
                     const candidateLines = [];
-                    // Raggruppa per Y approssimativo
                     allTextItems.forEach(item => {
                        const existingLine = candidateLines.find(l => Math.abs(l.y - item.y) < 5);
                        if (existingLine) existingLine.items.push(item);
@@ -209,28 +200,20 @@ const ProductModal = ({ isOpen, onClose, onSave, product }) => {
                     for (const line of candidateLines) {
                         const codeItem = line.items.find(i => i.str.startsWith('0000') && i.str.length > 6);
                         const qtyItem = line.items.find(i => !isNaN(parseFloat(i.str)) && i.str.length < 4 && i.x > (codeItem ? codeItem.x : 0));
-                        
                         if (codeItem && qtyItem) {
                             codeColX = codeItem.x;
                             qtyColX = qtyItem.x;
-                            headerY = line.y + 50; // Assumiamo header sopra i dati
+                            headerY = line.y + 50;
                             break;
                         }
                     }
                 }
 
                 if (codeColX !== null && qtyColX !== null) {
-                    // Estrazione Dati con coordinate trovate
-                    const xTol = 50; // Tolleranza orizzontale molto ampia
-                    
-                    // Raggruppa tutto per righe per processare
+                    const xTol = 50;
                     const lines = [];
                     allTextItems.forEach(item => {
-                        // Ignora tutto ciò che è sopra o uguale all'intestazione (in coordinate PDF Y cresce dal basso, ma qui assumiamo coordinata nativa)
-                        // Nelle BOM solitamente i dati sono SOTTO l'header. In PDF standard Y=0 è in basso.
-                        // Se headerY è definito, processiamo le righe "sotto" visivamente (che hanno Y minore in coordinate PDF standard)
-                        if (Math.abs(item.y - headerY) < 5) return; // Salta la riga header stessa
-
+                        if (Math.abs(item.y - headerY) < 5) return; 
                         let line = lines.find(l => Math.abs(l.y - item.y) < 5);
                         if (!line) { line = { y: item.y, items: [] }; lines.push(line); }
                         line.items.push(item);
@@ -239,15 +222,11 @@ const ProductModal = ({ isOpen, onClose, onSave, product }) => {
                     lines.forEach(line => {
                         const codeItem = line.items.find(i => Math.abs(i.x - codeColX) < xTol);
                         const qtyItem = line.items.find(i => Math.abs(i.x - qtyColX) < xTol);
-
                         if (codeItem && qtyItem) {
                             const rawCode = codeItem.str.trim();
-                            // Ignora se sembra un'intestazione ripetuta
                             if (codeKeywords.some(k => rawCode.toLowerCase().includes(k))) return;
-
                             const cleaned = cleanCode(rawCode);
                             const q = parseFloat(qtyItem.str.replace(',', '.'));
-                            
                             if (cleaned && !isNaN(q) && q > 0) {
                                 newBom.push({ sekoCode: cleaned, quantity: q });
                             }
@@ -297,16 +276,88 @@ const ProductModal = ({ isOpen, onClose, onSave, product }) => {
     );
 };
 
-// --- VISTA FORECAST (AGGIORNATA CON EDIT/DELETE) ---
+// --- DASHBOARD (VIEW) ---
+const Dashboard = ({ components }) => {
+    const stats = useMemo(() => {
+        const totalComponents = components.length;
+        const suppliers = new Set(components.flatMap(c => c.suppliers.map(s => s.name)));
+        const totalSuppliers = suppliers.size;
+        const bestPriceSuppliers = {};
+        components.forEach(c => { if (c.suppliers && c.suppliers.length > 0) { const bestSupplier = c.suppliers.reduce((min, s) => s.cost < min.cost ? s : min, c.suppliers[0]); bestPriceSuppliers[bestSupplier.name] = (bestPriceSuppliers[bestSupplier.name] || 0) + 1; } });
+        const sortedBestSuppliers = Object.entries(bestPriceSuppliers).sort(([, a], [, b]) => b - a).slice(0, 5);
+        return { totalComponents, totalSuppliers, sortedBestSuppliers };
+    }, [components]);
+
+    return (
+        <div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
+                <div className="bg-slate-900/50 border border-slate-800/50 p-6 rounded-xl"><h2 className="text-sm font-medium text-slate-400">Componenti Totali</h2><p className="text-4xl font-bold text-electric-blue mt-2">{stats.totalComponents}</p></div>
+                <div className="bg-slate-900/50 border border-slate-800/50 p-6 rounded-xl"><h2 className="text-sm font-medium text-slate-400">Fornitori Unici</h2><p className="text-4xl font-bold text-electric-blue mt-2">{stats.totalSuppliers}</p></div>
+            </div>
+             <div className="bg-slate-900/50 border border-slate-800/50 p-6 rounded-xl"><h2 className="text-lg font-semibold text-slate-200 mb-4">Top Fornitori per Miglior Prezzo</h2>{stats.sortedBestSuppliers.length > 0 ? (<ul className="space-y-3">{stats.sortedBestSuppliers.map(([name, count], index) => (<li key={name} className="flex items-center justify-between p-3 bg-slate-800/60 rounded-lg"><div className="flex items-center gap-4"><span className="text-sm font-bold text-slate-500 w-6 text-center">{index + 1}</span><p className="font-semibold text-slate-100">{name}</p></div><p className="text-sm text-electric-blue font-semibold bg-electric-blue/10 px-3 py-1 rounded-full">{count}</p></li>))}</ul>) : (<p className="text-slate-500 text-center py-4">Nessun dato sui prezzi disponibile.</p>)}</div>
+        </div>
+    );
+};
+
+// --- TABLE COMPONENTI ---
+const ComponentTable = ({ components, onEdit, onDelete }) => {
+  if (components.length === 0) return <div className="text-center p-12 bg-slate-900/50 border border-slate-800/50 rounded-lg shadow-md"><h2 className="text-xl text-slate-400">Nessun componente trovato.</h2></div>;
+  return (
+    <div className="bg-slate-500/5 dark:bg-slate-900/50 border border-slate-300/10 dark:border-slate-800/50 rounded-xl overflow-hidden shadow-2xl shadow-slate-950/50">
+      <div className="overflow-x-auto"><table className="w-full text-sm text-left text-slate-600 dark:text-slate-300"><thead className="text-xs text-slate-700 dark:text-slate-400 bg-slate-200/50 dark:bg-slate-800/80"><tr><th scope="col" className="px-6 py-4 font-medium tracking-wider">Codici</th><th scope="col" className="px-6 py-4 font-medium tracking-wider">Descrizione</th><th scope="col" className="px-6 py-4 font-medium tracking-wider text-center">Fornitori</th><th scope="col" className="px-6 py-4 font-medium tracking-wider text-right">Azioni</th></tr></thead><tbody className="divide-y divide-slate-200/5 dark:divide-slate-800/80">{components.map((component) => (<tr key={component.id} className="hover:bg-slate-400/5 dark:hover:bg-slate-800/70 transition-colors duration-200 group"><td className="px-6 py-4 whitespace-nowrap"><span className="font-mono text-electric-blue">{component.sekoCode}</span>{component.aselCode && <span className="font-sans text-green-400 ml-2">({component.aselCode})</span>}</td><td className="px-6 py-4 max-w-xs truncate" title={component.description}>{component.description}</td><td className="px-6 py-4 text-center"><span className="bg-electric-blue/10 text-electric-blue-light text-xs font-bold px-3 py-1 rounded-full border border-electric-blue/20">{component.suppliers.length}</span></td><td className="px-6 py-4 text-right"><div className="flex justify-end items-center gap-2 opacity-50 group-hover:opacity-100 transition-opacity"><button onClick={() => onEdit(component)} className="p-2 rounded-md hover:bg-slate-700/50 text-slate-400 hover:text-electric-blue transition-colors"><EditIcon /></button><button onClick={() => onDelete(component.id)} className="p-2 rounded-md hover:bg-slate-700/50 text-slate-400 hover:text-red-500 transition-colors"><TrashIcon /></button></div></td></tr>))}</tbody></table></div>
+    </div>
+  );
+};
+
+// --- COMPONENTS VIEW ---
+const ComponentsView = ({ components, onEdit, onDelete, onOpenModal, onOpenBomModal, onOpenCsvModal, onOpenAselUpdateModal, filteredComponents, searchQuery, setSearchQuery, handleExportView }) => (
+    <div>
+        <div className="flex flex-wrap justify-between items-center mb-8 gap-4">
+            <h1 className="text-3xl md:text-4xl font-bold text-slate-700 dark:text-slate-200 tracking-tight">Componenti Elettronici</h1>
+            <div className="flex items-center gap-2 flex-wrap">
+                <button onClick={onOpenAselUpdateModal} className="flex items-center gap-2 bg-orange-500/10 text-orange-400 font-semibold py-2 px-4 rounded-lg border border-orange-500/30 hover:bg-orange-500/20">Aggiorna Asel da CSV</button>
+                <button onClick={onOpenCsvModal} className="flex items-center gap-2 bg-purple-500/10 text-purple-400 font-semibold py-2 px-4 rounded-lg border border-purple-500/30 hover:bg-purple-500/20">Importa Nuovi</button>
+                <button onClick={onOpenBomModal} className="flex items-center gap-2 bg-green-500/10 text-green-400 font-semibold py-2 px-4 rounded-lg border border-green-500/30 hover:bg-green-500/20">Quota BOM</button>
+                <button onClick={() => onOpenModal(null)} className="flex items-center gap-2 bg-electric-blue text-white font-bold py-2 px-5 rounded-lg shadow-lg shadow-electric-blue/20 hover:bg-electric-blue/90"><PlusIcon /> Aggiungi</button>
+            </div>
+        </div>
+        
+        <div className="mb-8 flex flex-wrap gap-4 items-center">
+            <div className="relative flex-grow"><span className="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-500"><SearchIcon /></span><input type="text" placeholder="Cerca..." value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)} className="w-full pl-10 pr-4 py-2 bg-slate-100 dark:bg-slate-900/50 border border-slate-300 dark:border-slate-800/50 rounded-lg text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-electric-blue" /></div>
+             <button onClick={handleExportView} className="flex items-center gap-2 bg-blue-500/10 text-blue-400 font-semibold py-2 px-4 rounded-lg border border-blue-500/30 hover:bg-blue-500/20"><FileExcelIcon /> Esporta Vista</button>
+        </div>
+        <ComponentTable components={filteredComponents} onEdit={onEdit} onDelete={onDelete} />
+    </div>
+);
+
+// --- FORECAST VIEW (CON EDIT/DELETE) ---
 const ForecastView = ({ products, components, onAddProduct, onEditProduct, onDeleteProduct }) => {
     const [plan, setPlan] = useState([{ productId: '', quantity: 0 }]); const [results, setResults] = useState(null);
     const handlePlanChange = (index, field, value) => { const newPlan = [...plan]; newPlan[index][field] = value; setPlan(newPlan); };
     const calculateForecast = () => { const agg = {}; plan.forEach(item => { const p = products.find(x=>x.id===item.productId); const q = parseFloat(item.quantity); if(p && q>0) { p.bom.forEach(c => { if(!agg[c.sekoCode]) agg[c.sekoCode]={t:0, b:[]}; const n = c.quantity * q; agg[c.sekoCode].t+=n; agg[c.sekoCode].b.push({p:p.name, pq:q, qpu:c.quantity, tot:n}); }); } }); setResults(Object.keys(agg).map(code => ({ code, desc: components.find(c=>c.sekoCode===code)?.description||'N/D', tot: agg[code].t, b: agg[code].b }))); };
     const exportForecast = () => { if(!results) return; XLSX.writeFile(XLSX.utils.book_newWithSheets({"Forecast": XLSX.utils.json_to_sheet(results.map(r=>({'Codice':r.code, 'Desc':r.desc, 'Tot':r.tot, 'Dettaglio':r.b.map(x=>`${x.p}(${x.tot})`).join('; ')})))}), 'forecast.xlsx'); };
-    return (<div className="grid grid-cols-1 lg:grid-cols-3 gap-8"><div className="lg:col-span-1 space-y-6"><div className="bg-slate-900/50 border border-slate-800/50 p-6 rounded-xl"><div className="flex justify-between items-center mb-4"><h2 className="text-lg font-bold text-slate-200">Prodotti / BOM</h2><button onClick={onAddProduct} className="text-xs bg-electric-blue px-2 py-1 rounded text-white">+ Nuovo</button></div><div className="max-h-60 overflow-y-auto space-y-2 pr-1">{products.length===0?<p className="text-slate-500 text-sm">Nessun prodotto.</p>:products.map(p=>(<div key={p.id} className="p-3 bg-slate-800/50 rounded border border-slate-700/50 flex justify-between items-center"><div><p className="font-bold text-slate-200 text-sm">{p.name}</p><p className="text-xs text-slate-400">{p.code}</p></div><div className="flex items-center gap-2"><span className="text-xs bg-slate-700 px-2 py-0.5 rounded text-slate-300">{p.bom.length}</span><button onClick={()=>onEditProduct(p)} className="text-slate-500 hover:text-electric-blue p-1"><EditIcon/></button><button onClick={()=>onDeleteProduct(p.id)} className="text-slate-500 hover:text-red-500 p-1"><TrashIcon/></button></div></div>))}</div></div><div className="bg-slate-900/50 border border-slate-800/50 p-6 rounded-xl"><h2 className="text-lg font-bold text-slate-200 mb-4">Piano Produzione</h2>{plan.map((row, idx) => (<div key={idx} className="flex gap-2 items-end mb-2"><div className="flex-grow"><label className="text-xs text-slate-400">Prodotto</label><select className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm text-white" value={row.productId} onChange={(e) => handlePlanChange(idx, 'productId', e.target.value)}><option value="">Seleziona...</option>{products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div><div className="w-24"><label className="text-xs text-slate-400">Q.tà</label><input type="number" className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm text-white" value={row.quantity} onChange={(e) => handlePlanChange(idx, 'quantity', e.target.value)} /></div>{plan.length>1 && <button onClick={()=>setPlan(plan.filter((_,i)=>i!==idx))} className="text-red-400 p-2"><XIcon/></button>}</div>))}<button onClick={()=>setPlan([...plan,{productId:'',quantity:0}])} className="text-xs text-electric-blue mt-2">+ Riga</button><button onClick={calculateForecast} className="w-full mt-6 bg-electric-blue text-white font-bold py-2 rounded shadow-lg hover:bg-electric-blue/90">Calcola</button></div></div><div className="lg:col-span-2 bg-slate-900/50 border border-slate-800/50 p-6 rounded-xl flex flex-col min-h-[500px]"><div className="flex justify-between items-center mb-4"><h2 className="text-lg font-bold text-slate-200">Risultato</h2>{results && <button onClick={exportForecast} className="text-green-400 border border-green-500/30 px-3 py-1 rounded text-sm">Export Excel</button>}</div>{!results ? <div className="flex-grow flex items-center justify-center text-slate-500"><p>Configura il piano.</p></div> : <div className="overflow-x-auto flex-grow"><table className="w-full text-sm text-left text-slate-300"><thead className="text-xs text-slate-400 bg-slate-800/50"><tr><th className="p-3">Codice</th><th className="p-3">Descrizione</th><th className="p-3 text-center">Totale</th><th className="p-3">Dettaglio</th></tr></thead><tbody className="divide-y divide-slate-800">{results.map((r, i) => (<tr key={i} className="hover:bg-slate-800/30"><td className="p-3 font-mono text-electric-blue font-bold">{r.code}</td><td className="p-3 truncate max-w-xs">{r.desc}</td><td className="p-3 text-center font-bold text-white text-lg">{r.tot}</td><td className="p-3"><div className="flex flex-wrap gap-1">{r.b.map((b,bi)=>(<span key={bi} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-700 text-slate-300">{b.p}: <span className="text-white ml-1 font-bold">{b.tot}</span></span>))}</div></td></tr>))}</tbody></table></div>}</div></div>);
+    return (<div className="grid grid-cols-1 lg:grid-cols-3 gap-8"><div className="lg:col-span-1 space-y-6"><div className="bg-slate-900/50 border border-slate-800/50 p-6 rounded-xl"><div className="flex justify-between items-center mb-4"><h2 className="text-lg font-bold text-slate-200">Prodotti / BOM</h2><button onClick={onAddProduct} className="text-xs bg-electric-blue px-2 py-1 rounded text-white">+ Nuovo</button></div><div className="max-h-60 overflow-y-auto space-y-2 pr-1">{products.length===0?<p className="text-slate-500 text-sm">Nessun prodotto.</p>:products.map(p=>(<div key={p.id} className="p-3 bg-slate-800/50 rounded border border-slate-700/50 flex justify-between items-center"><div><p className="font-bold text-slate-200 text-sm">{p.name}</p><p className="text-xs text-slate-400">{p.code}</p></div><div className="flex items-center gap-2"><span className="text-xs bg-slate-700 px-2 py-0.5 rounded text-slate-300">{p.bom.length}</span><button onClick={()=>onEditProduct(p)} className="text-slate-500 hover:text-electric-blue p-1"><EditIcon/></button><button onClick={()=>onDeleteProduct(p.id)} className="text-slate-500 hover:text-red-500 p-1"><TrashIcon/></button></div></div>))}</div></div><div className="bg-slate-900/50 border border-slate-800/50 p-6 rounded-xl"><h2 className="text-lg font-bold text-slate-200 mb-4">Piano Produzione</h2>{plan.map((row, idx) => (<div key={idx} className="flex gap-2 items-end mb-2"><div className="flex-grow"><label className="text-xs text-slate-400">Prodotto</label><select className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm text-white" value={row.productId} onChange={(e) => handlePlanChange(idx, 'productId', e.target.value)}><option value="">Seleziona...</option>{products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div><div className="w-24"><label className="text-xs text-slate-400">Q.tà</label><input type="number" className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm text-white" value={row.quantity} onChange={(e) => handlePlanChange(idx, 'quantity', e.target.value)} /></div>{plan.length>1 && <button onClick={()=>setPlan(plan.filter((_,i)=>i!==idx))} className="text-red-400 p-2"><XIcon/></button>}</div>))}<button onClick={()=>setPlan([...plan,{productId:'',quantity:0}])} className="text-xs text-electric-blue mt-2">+ Riga</button><button onClick={calculateForecast} className="w-full mt-6 bg-electric-blue text-white font-bold py-2 rounded shadow-lg hover:bg-electric-blue/90">Calcola</button></div></div><div className="lg:col-span-2 bg-slate-900/50 border border-slate-800/50 p-6 rounded-xl flex flex-col min-h-[500px]"><div className="flex justify-between items-center mb-4"><h2 className="text-lg font-bold text-slate-200">Risultato</h2>{results && <button onClick={exportForecast} className="text-green-400 border border-green-500/30 px-3 py-1 rounded text-sm">Export Excel</button>}</div>{!results ? <div className="flex-grow flex items-center justify-center text-slate-500"><p>Configura il piano.</p></div> : <div className="overflow-x-auto flex-grow"><table className="w-full text-sm text-left text-slate-300"><thead className="text-xs text-slate-400 bg-slate-800/50"><tr><th className="p-3">Codice</th><th className="p-3">Desc</th><th className="p-3 text-center">Totale</th><th className="p-3">Dettaglio</th></tr></thead><tbody className="divide-y divide-slate-800">{results.map((r, i) => (<tr key={i} className="hover:bg-slate-800/30"><td className="p-3 font-mono text-electric-blue font-bold">{r.code}</td><td className="p-3 truncate max-w-xs">{r.desc}</td><td className="p-3 text-center font-bold text-white text-lg">{r.tot}</td><td className="p-3"><div className="flex flex-wrap gap-1">{r.b.map((b,bi)=>(<span key={bi} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-700 text-slate-300">{b.p}: <span className="text-white ml-1 font-bold">{b.tot}</span></span>))}</div></td></tr>))}</tbody></table></div>}</div></div>);
 };
 
-// --- MAIN APP ---
+// --- HEADER ---
+const Header = ({ theme, toggleTheme, user, onLogout }) => ( 
+    <header className="sticky top-0 z-40 bg-slate-100/80 dark:bg-slate-950/75 backdrop-blur-lg border-b border-slate-300/10 dark:border-slate-500/30 transition-colors">
+      <div className="container mx-auto px-4 md:px-8 py-4 flex justify-between items-center">
+        <h1 className="text-2xl font-bold text-electric-blue dark:text-electric-blue tracking-wider">GESTIONALE</h1>
+        <div className="flex items-center gap-4">
+          {user && (
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-slate-500 dark:text-slate-400 hidden sm:inline">{user.email}</span>
+              <button onClick={onLogout} className="text-sm bg-slate-200/80 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 font-semibold py-1.5 px-3 rounded-md hover:bg-slate-300 dark:hover:bg-slate-700/80 transition-colors">Logout</button>
+            </div>
+          )}
+          <button onClick={toggleTheme} className="p-2 rounded-full text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-800/50 transition-colors">{theme === 'light' ? <MoonIcon /> : <SunIcon />}</button>
+        </div>
+      </div>
+    </header>
+);
+
+// --- APP MAIN ---
 const App = () => {
     const [user, setUser] = useState(null); const [authReady, setAuthReady] = useState(false); const [loginError, setLoginError] = useState(null); const [configError, setConfigError] = useState(null);
     const [components, setComponents] = useState([]); const [products, setProducts] = useState([]); const [loading, setLoading] = useState(true); const [dbError, setDbError] = useState(null);

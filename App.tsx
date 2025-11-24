@@ -80,7 +80,7 @@ const checkFirebaseConfig = (config: any) => {
     return Object.values(config).every(value => value && typeof value === 'string' && value.length > 0);
 };
 
-// --- ICONE ---
+// --- COMPONENTI ICONE ---
 const Icon = ({ children, className }: any) => (
   <svg xmlns="http://www.w3.org/2000/svg" className={className || "w-5 h-5"} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
     {children}
@@ -556,7 +556,7 @@ const AselUpdateModal = ({ isOpen, onClose, onUpdate }: any) => {
     );
 };
 
-// --- COMPONENTE PRODUCT MODAL (ALGORITMO "ROW-SCAN") ---
+// --- COMPONENTE PRODUCT MODAL (ALGORITMO ROW-SCAN PER PDF) ---
 const ProductModal = ({ isOpen, onClose, onSave, product }: any) => {
     const [name, setName] = useState('');
     const [code, setCode] = useState('');
@@ -581,45 +581,68 @@ const ProductModal = ({ isOpen, onClose, onSave, product }: any) => {
     // NUOVO ALGORITMO: Scansione per Riga (molto più affidabile per PDF disallineati)
     const extractBomDataSmartly = (items: any[]) => {
         const extracted: any[] = [];
-        // Tolleranza verticale per considerare due testi sulla stessa riga
-        const yTolerance = 4; 
+        const yTolerance = 5; // Tolleranza per considerare elementi sulla stessa riga
 
-        // 1. Identifica tutti i potenziali codici SEKO
-        const potentialCodes = items.filter(i => {
-            const txt = i.str.trim();
-            if (txt.length < 5) return false;
-            if (['part', 'code', 'number', 'description', 'reference', 'seko', 'compiled', 'checked', 'title', 'date'].some(k => txt.toLowerCase().includes(k))) return false;
-            // Regex permissiva: Alfanumerico, trattini, punti. Almeno un numero.
-            return /^[A-Z0-9\-\.]{5,20}$/.test(txt) && /\d/.test(txt);
-        });
+        // 1. Raggruppa gli elementi per "Riga"
+        items.sort((a, b) => b.y - a.y);
 
-        // 2. Per ogni codice trovato, cerca una quantità sulla STESSA RIGA
-        potentialCodes.forEach(codeItem => {
-            // Cerca elementi che hanno circa la stessa Y (stessa riga)
-            const rowItems = items.filter(i => Math.abs(i.y - codeItem.y) < yTolerance && i !== codeItem);
+        const lines: any[] = [];
+        if (items.length > 0) {
+            let currentLine = [items[0]];
+            let currentY = items[0].y;
 
-            // Cerca un numero piccolo che sia "a destra" del codice (X maggiore)
-            const qtyItem = rowItems.find(i => {
-                // Deve essere a destra del codice
-                if (i.x <= codeItem.x) return false;
+            for (let i = 1; i < items.length; i++) {
+                if (Math.abs(items[i].y - currentY) < yTolerance) {
+                    currentLine.push(items[i]);
+                } else {
+                    currentLine.sort((a, b) => a.x - b.x);
+                    lines.push(currentLine);
+                    currentLine = [items[i]];
+                    currentY = items[i].y;
+                }
+            }
+            currentLine.sort((a, b) => a.x - b.x);
+            lines.push(currentLine);
+        }
+
+        // 2. Analizza ogni riga ricostruita
+        lines.forEach((line) => {
+            const lineText = line.map((i: any) => i.str).join(" ");
+            
+            // Regex: cerca parole che iniziano con 0000 seguite da numeri (Seko) OPPURE alfanumerici lunghi
+            const sekoRegex = /\b0000\d+\b/; 
+            const genericCodeRegex = /\b[A-Z0-9\-\.]{6,}\b/;
+
+            let match = lineText.match(sekoRegex) || lineText.match(genericCodeRegex);
+
+            if (match) {
+                const rawCode = match[0];
+                if (['DESCRIPTION', 'REFERENCE', 'SECTION', 'CODICE', 'NUMBER', 'COMPILED', 'CHECKED'].some(k => rawCode.toUpperCase().includes(k))) return;
+
+                const cleanedCode = cleanCode(rawCode);
+                const textWithoutCode = lineText.replace(rawCode, "");
                 
-                const txt = i.str.trim().replace(',', '.');
-                // Deve essere un numero puro
-                if (!/^[0-9]+(\.[0-9]+)?$/.test(txt)) return false;
-                
-                const val = parseFloat(txt);
-                // Le quantità nelle BOM sono solitamente numeri ragionevoli (1-5000)
-                return !isNaN(val) && val > 0 && val < 5000;
-            });
+                // Cerca numeri interi isolati (Quantità)
+                const numbers = textWithoutCode.match(/\b\d{1,4}\b/g);
 
-            if (qtyItem) {
-                const qVal = parseFloat(qtyItem.str.replace(',', '.'));
-                const cleanedCode = cleanCode(codeItem.str.trim());
-                
-                // Evita duplicati se il PDF ha testi sovrapposti
-                const alreadyExists = extracted.some(e => e.sekoCode === cleanedCode);
-                if (!alreadyExists) {
-                    extracted.push({ sekoCode: cleanedCode, quantity: qVal });
+                let qty = 1; // Default
+
+                if (numbers) {
+                    const validNumbers = numbers.map((n: string) => parseFloat(n)).filter((n: number) => n > 0 && n < 5000);
+                    
+                    if (validNumbers.length > 0) {
+                        // Euristica: Se troviamo numeri piccoli (1-50), è probabile siano quantità
+                        // Altrimenti prendiamo il primo numero valido
+                        const likelyQty = validNumbers.find((n: number) => n < 50); 
+                        if (likelyQty) qty = likelyQty;
+                        else qty = validNumbers[0];
+                    }
+                }
+
+                if (cleanedCode) {
+                    if (!extracted.some(e => e.sekoCode === cleanedCode)) {
+                        extracted.push({ sekoCode: cleanedCode, quantity: qty });
+                    }
                 }
             }
         });
@@ -636,32 +659,38 @@ const ProductModal = ({ isOpen, onClose, onSave, product }: any) => {
         if (file.type === 'application/pdf') {
             try {
                 const pdfjsLib = await import('pdfjs-dist');
+                // Importante: usa unpkg per il worker
                 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
+                
                 const fileUrl = URL.createObjectURL(file);
                 const pdf = await pdfjsLib.getDocument(fileUrl).promise;
                 
-                let allTextItems: any[] = [];
+                let allItems: any[] = [];
                 for (let i = 1; i <= pdf.numPages; i++) {
                     const page = await pdf.getPage(i);
                     const textContent = await page.getTextContent();
-                    // Mappiamo i dati essenziali
-                    allTextItems = [...allTextItems, ...textContent.items.map((item: any) => ({ 
+                    const pageItems = textContent.items.map((item: any) => ({ 
                         str: item.str, 
                         x: item.transform[4], 
                         y: item.transform[5],
-                        w: item.width 
-                    }))];
+                        w: item.width
+                    })).filter((i: any) => i.str.trim().length > 0);
+                    
+                    allItems = [...allItems, ...pageItems];
                 }
 
-                const extracted = extractBomDataSmartly(allTextItems);
+                const extracted = extractBomDataSmartly(allItems);
 
                 if (extracted && extracted.length > 0) {
                     setBom(extracted);
                 } else {
-                    setFileError("Nessun componente trovato. Il PDF potrebbe essere un'immagine (scansione) o avere un formato non supportato.");
+                    setFileError("Nessun componente trovato. Il PDF potrebbe non contenere testo selezionabile.");
                 }
 
-            } catch (err: any) { console.error(err); setFileError("Errore PDF: " + err.message); }
+            } catch (err: any) { 
+                console.error(err); 
+                setFileError("Errore lettura PDF: " + err.message); 
+            }
             setIsProcessing(false);
             return;
         }
@@ -690,7 +719,7 @@ const ProductModal = ({ isOpen, onClose, onSave, product }: any) => {
     };
 
     const handleSubmit = () => { 
-        if (!name || !code || bom.length === 0) { alert("Compila tutti i campi e assicurati che ci sia una BOM."); return; } 
+        if (!name || !code || bom.length === 0) { alert("Dati mancanti."); return; } 
         onSave({ ...product, name, code, bom }); 
         onClose(); 
     };
@@ -702,8 +731,8 @@ const ProductModal = ({ isOpen, onClose, onSave, product }: any) => {
                 <header className="p-5 border-b border-slate-800 flex justify-between"><h2 className="text-xl font-bold text-white">{product ? 'Modifica Prodotto' : 'Nuovo Prodotto'}</h2><button onClick={onClose} className="text-slate-500 hover:text-white"><XIcon /></button></header>
                 <div className="p-6 space-y-4 flex-grow overflow-y-auto">
                     <div className="grid grid-cols-2 gap-4">
-                        <InputField label="Nome Prodotto" name="pname" value={name} onChange={(e:any) => setName(e.target.value)} placeholder="Es. Scheda Madre V1" required />
-                        <InputField label="Codice Prodotto" name="pcode" value={code} onChange={(e:any) => setCode(e.target.value)} placeholder="Es. PRD-001" required />
+                        <InputField label="Nome Prodotto" name="pname" value={name} onChange={(e:any) => setName(e.target.value)} required />
+                        <InputField label="Codice Prodotto" name="pcode" value={code} onChange={(e:any) => setCode(e.target.value)} required />
                     </div>
                     
                     <div>
@@ -759,7 +788,7 @@ const ProductModal = ({ isOpen, onClose, onSave, product }: any) => {
     );
 };
 
-// --- HEADER ---
+// --- HEADER (INCLUSO) ---
 const Header = ({ theme, toggleTheme, user, onLogout }: any) => ( 
     <header className="sticky top-0 z-40 bg-slate-100/80 dark:bg-slate-950/75 backdrop-blur-lg border-b border-slate-300/10 dark:border-slate-500/30 transition-colors">
       <div className="container mx-auto px-4 md:px-8 py-4 flex justify-between items-center">
@@ -777,7 +806,7 @@ const Header = ({ theme, toggleTheme, user, onLogout }: any) => (
     </header>
 );
 
-// --- TABLE COMPONENTI ---
+// --- TABLE COMPONENTI (INCLUSA) ---
 const ComponentTable = ({ components, onEdit, onDelete }: any) => {
   if (components.length === 0) {
     return (
@@ -828,7 +857,7 @@ const ComponentTable = ({ components, onEdit, onDelete }: any) => {
   );
 };
 
-// --- DASHBOARD ---
+// --- DASHBOARD (INCLUSA) ---
 const Dashboard = ({ components }: any) => {
     const stats = useMemo(() => {
         const totalComponents = components.length;
@@ -884,7 +913,7 @@ const Dashboard = ({ components }: any) => {
     );
 };
 
-// --- COMPONENTS VIEW ---
+// --- COMPONENTS VIEW (INCLUSA) ---
 const ComponentsView = ({ components, onEdit, onDelete, onOpenModal, onOpenBomModal, onOpenCsvModal, onOpenAselUpdateModal, filteredComponents, searchQuery, setSearchQuery, handleExportView }: any) => (
     <div>
         <div className="flex flex-wrap justify-between items-center mb-8 gap-4">
@@ -924,7 +953,7 @@ const ComponentsView = ({ components, onEdit, onDelete, onOpenModal, onOpenBomMo
     </div>
 );
 
-// --- FORECAST VIEW ---
+// --- FORECAST VIEW (INCLUSA) ---
 const ForecastView = ({ products, components, onAddProduct, onEditProduct, onDeleteProduct }: any) => {
     const [plan, setPlan] = useState([{ productId: '', quantity: 0 }]);
     const [results, setResults] = useState<any[] | null>(null);

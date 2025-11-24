@@ -112,7 +112,7 @@ const ErrorScreen = ({ title, message, details }) => (<div className="min-h-scre
 const InputField = ({ label, name, value, onChange, required, type = "text", readOnly = false, placeholder = '', step = null }) => (<div><label htmlFor={name} className="block text-sm font-medium text-slate-400 mb-1">{label}</label><input type={type} name={name} id={name} value={value} onChange={onChange} required={required} readOnly={readOnly} placeholder={placeholder} step={step} className={`w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-md shadow-sm focus:ring-1 focus:ring-electric-blue focus:border-electric-blue transition-colors ${readOnly ? 'cursor-not-allowed opacity-60' : ''}`} /></div>);
 const LoginPage = ({ onLogin, error }) => { const [e, setE] = useState(''); const [p, setP] = useState(''); const [l, setL] = useState(false); const sub = async (evt) => { evt.preventDefault(); setL(true); await onLogin(e, p); setL(false); }; return (<div className="min-h-screen flex items-center justify-center bg-slate-950 p-4"><div className="w-full max-w-sm"><h1 className="text-3xl font-bold text-center text-electric-blue mb-8 tracking-wider">GESTIONALE COMPONENTI</h1><div className="bg-slate-900/50 border border-slate-800/50 rounded-xl shadow-2xl p-8"><form onSubmit={sub} className="space-y-6"><div><label className="block text-sm font-medium text-slate-400 mb-1">Email</label><input type="email" value={e} onChange={ev=>setE(ev.target.value)} required className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-md shadow-sm focus:ring-1 focus:ring-electric-blue text-slate-200" /></div><div><label className="block text-sm font-medium text-slate-400 mb-1">Password</label><input type="password" value={p} onChange={ev=>setP(ev.target.value)} required className="w-full px-3 py-2 bg-slate-800/50 border border-slate-700 rounded-md shadow-sm focus:ring-1 focus:ring-electric-blue text-slate-200" /></div>{error && <p className="text-sm text-red-400 text-center">{error}</p>}<div><button type="submit" disabled={l} className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-electric-blue hover:bg-electric-blue/90 disabled:bg-slate-600">{l ? <SpinnerIcon className="w-5 h-5 animate-spin" /> : 'Accedi'}</button></div></form></div></div></div>); };
 
-// --- MODALI ---
+// --- MODALI ESISTENTI ---
 const ComponentModal = ({ component, onClose, onSave }) => {
     const [formData, setFormData] = useState({ sekoCode: '', aselCode: '', description: '', suppliers: [], logs: [] });
     const [lfWmsCode, setLfWmsCode] = useState('');
@@ -205,20 +205,38 @@ const AselUpdateModal = ({ isOpen, onClose, onUpdate }) => {
     if (!isOpen) return null; return (<div className="fixed inset-0 bg-black/70 z-50 flex justify-center items-center p-4"><div className="bg-slate-900/80 p-6 rounded-xl border border-slate-700"><h2 className="text-xl font-bold mb-4">Update Asel</h2><input type="file" onChange={e=>handleFile(e.target.files[0])} /><button onClick={onClose} className="mt-4 text-slate-400">Chiudi</button></div></div>);
 };
 
-// --- COMPONENTE PRODUCT MODAL CON IMPORTAZIONE DINAMICA PDF (CORRETTO) ---
-const ProductModal = ({ isOpen, onClose, onSave }) => {
+// --- COMPONENTE PRODUCT MODAL CON SUPPORTO PDF MIGLIORATO & EDITING ---
+const ProductModal = ({ isOpen, onClose, onSave, product }) => {
     const [name, setName] = useState('');
     const [code, setCode] = useState('');
     const [bom, setBom] = useState([]);
     const [fileError, setFileError] = useState(null);
     const [isProcessing, setIsProcessing] = useState(false);
+
+    useEffect(() => {
+        if (product) {
+            setName(product.name);
+            setCode(product.code);
+            setBom(product.bom || []);
+        } else {
+            setName('');
+            setCode('');
+            setBom([]);
+        }
+    }, [product]);
+
     const cleanCode = (c) => String(c).replace(/^0+/, '').trim();
+
     const handleFile = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
         setFileError(null);
-        setBom([]);
         setIsProcessing(true);
+        
+        // Nota: Non azzeriamo la BOM subito per non perdere i dati se il file è invalido
+        // ma in questo caso, se l'utente carica un file, probabilmente vuole sostituire.
+        let newBom = [];
+
         if (file.type === 'application/pdf') {
             try {
                 const pdfjsLib = await import('pdfjs-dist');
@@ -227,6 +245,7 @@ const ProductModal = ({ isOpen, onClose, onSave }) => {
                 const fileUrl = URL.createObjectURL(file);
                 const pdf = await pdfjsLib.getDocument(fileUrl).promise;
                 let allItems = [];
+                
                 for (let i = 1; i <= pdf.numPages; i++) {
                     const page = await pdf.getPage(i);
                     const textContent = await page.getTextContent();
@@ -234,10 +253,11 @@ const ProductModal = ({ isOpen, onClose, onSave }) => {
                     allItems = [...allItems, ...pageItems];
                 }
                 
-                // Aumentata la tolleranza verticale a 10 per gestire disallineamenti leggeri
-                const tolerance = 10; 
+                // TOLLERANZA VERTICALE AUMENTATA (Per gestire Part Code e Q.ty non perfettamente allineati)
+                const tolerance = 20; 
                 const rows = [];
-                allItems.sort((a, b) => b.y - a.y);
+                allItems.sort((a, b) => b.y - a.y); // Ordina per Y (alto -> basso)
+
                 if (allItems.length > 0) {
                     let currentRow = [allItems[0]];
                     let currentY = allItems[0].y;
@@ -252,17 +272,21 @@ const ProductModal = ({ isOpen, onClose, onSave }) => {
                     }
                     rows.push(currentRow.sort((a, b) => a.x - b.x));
                 }
+
                 let codeColX = null;
                 let qtyColX = null;
                 let headerFound = false;
                 
-                // AGGIUNTO 'part code' e 'q.ty' alle parole chiave
-                const codeKeywords = ['part code', 'codice', 'code', 'part number', 'articolo'];
+                // AGGIUNTO 'part code' spezzato e 'q.ty'
+                // Nota: a volte 'Part Code' viene letto come due stringhe separate.
+                // Cerchiamo una stringa che contenga una di queste parole chiave.
+                const codeKeywords = ['part code', 'partcode', 'part no', 'codice', 'code', 'part number'];
                 const qtyKeywords = ['q.ty', 'q.tà', 'q.ta', 'qta', 'qty', 'quantity', 'quantità'];
                 
                 for (const row of rows) {
                     const codeIdx = row.findIndex(item => codeKeywords.some(k => item.str.toLowerCase().includes(k)));
                     const qtyIdx = row.findIndex(item => qtyKeywords.some(k => item.str.toLowerCase().includes(k)));
+                    
                     if (codeIdx !== -1 && qtyIdx !== -1) {
                         codeColX = row[codeIdx].x;
                         qtyColX = row[qtyIdx].x;
@@ -270,29 +294,41 @@ const ProductModal = ({ isOpen, onClose, onSave }) => {
                         break;
                     }
                 }
+
                 if (!headerFound) {
-                    setFileError("Impossibile trovare le colonne 'Codice' e 'Quantità' nel PDF.");
+                    setFileError("Intestazioni non trovate. Assicurati che il PDF abbia 'Part Code' (o Code) e 'Q.ty'.");
                     setIsProcessing(false);
                     return;
                 }
-                const xTolerance = 20;
-                const parsedBom = [];
+
+                // TOLLERANZA ORIZZONTALE AUMENTATA (Per gestire allineamenti diversi)
+                const xTolerance = 40; 
+                
                 for (const row of rows) {
+                    // Cerca elemento che cade nella colonna Codice
                     const codeItem = row.find(item => Math.abs(item.x - codeColX) < xTolerance);
+                    // Cerca elemento che cade nella colonna Quantità
                     const qtyItem = row.find(item => Math.abs(item.x - qtyColX) < xTolerance);
+
                     if (codeItem && qtyItem) {
                         const rawCode = codeItem.str.trim();
+                        // Ignora l'intestazione stessa se viene riletta
                         if (codeKeywords.some(k => rawCode.toLowerCase().includes(k))) continue;
+                        
                         const cleanedCode = cleanCode(rawCode);
+                        // Pulisce quantità (gestisce virgole e punti)
                         const qtyStr = qtyItem.str.replace(',', '.').replace(/[^0-9.]/g, '');
                         const qty = parseFloat(qtyStr);
-                        if (cleanedCode && qty > 0) {
-                            parsedBom.push({ sekoCode: cleanedCode, quantity: qty });
+
+                        if (cleanedCode && !isNaN(qty) && qty > 0) {
+                            newBom.push({ sekoCode: cleanedCode, quantity: qty });
                         }
                     }
                 }
-                if (parsedBom.length === 0) setFileError("Nessun componente valido estratto.");
-                else setBom(parsedBom);
+
+                if (newBom.length === 0) setFileError("Nessun componente valido estratto.");
+                else setBom(newBom);
+
             } catch (err) {
                 console.error(err);
                 setFileError("Errore lettura PDF: " + err.message);
@@ -300,40 +336,245 @@ const ProductModal = ({ isOpen, onClose, onSave }) => {
             setIsProcessing(false);
             return;
         }
+
+        // GESTIONE EXCEL/CSV
         const reader = new FileReader();
         reader.onload = (evt) => {
             try {
                 const wb = XLSX.read(evt.target.result, { type: 'binary' });
                 const ws = wb.Sheets[wb.SheetNames[0]];
                 const data = XLSX.utils.sheet_to_json(ws, { header: 1 }); 
-                const parsedBom = [];
+                
                 data.forEach((row, index) => {
+                    // Salta la prima riga se sembra un header (controlla se la colonna quantità non è un numero)
                     if (index === 0 && isNaN(row[1])) return;
+                    
                     const compCode = String(row[0] || '').trim();
                     const qty = parseFloat(row[1]);
-                    if (compCode && qty > 0) {
-                        parsedBom.push({ sekoCode: cleanCode(compCode), quantity: qty });
+                    
+                    if (compCode && !isNaN(qty) && qty > 0) {
+                        newBom.push({ sekoCode: cleanCode(compCode), quantity: qty });
                     }
                 });
-                if (parsedBom.length === 0) setFileError("Nessun componente valido trovato.");
-                else setBom(parsedBom);
-            } catch (err) { setFileError("Errore lettura file."); }
+                
+                if (newBom.length === 0) setFileError("Nessun componente valido trovato nel file.");
+                else setBom(newBom);
+            } catch (err) { setFileError("Errore lettura file Excel."); }
             setIsProcessing(false);
         };
         reader.readAsBinaryString(file);
     };
-    const handleSubmit = () => { if (!name || !code || bom.length === 0) { alert("Compila tutti i campi."); return; } onSave({ name, code, bom }); setName(''); setCode(''); setBom([]); onClose(); };
+
+    const handleRemoveItem = (idx) => {
+        setBom(bom.filter((_, i) => i !== idx));
+    };
+
+    const handleSubmit = () => { 
+        if (!name || !code || bom.length === 0) { alert("Compila tutti i campi e assicurati che ci sia una BOM."); return; } 
+        onSave({ ...product, name, code, bom }); // Passa anche l'ID originale se in modifica
+        onClose(); 
+    };
+
     if (!isOpen) return null;
-    return (<div className="fixed inset-0 bg-black/70 z-50 flex justify-center items-center p-4 backdrop-blur-sm"><div className="bg-slate-900/80 backdrop-blur-xl border border-slate-700 rounded-xl shadow-2xl w-full max-w-lg"><header className="p-5 border-b border-slate-800 flex justify-between"><h2 className="text-xl font-bold text-white">Nuovo Prodotto (BOM)</h2><button onClick={onClose} className="text-slate-500 hover:text-white"><XIcon /></button></header><div className="p-6 space-y-4"><InputField label="Nome Prodotto" name="pname" value={name} onChange={(e) => setName(e.target.value)} placeholder="Es. Scheda Madre V1" required /><InputField label="Codice Prodotto" name="pcode" value={code} onChange={(e) => setCode(e.target.value)} placeholder="Es. PRD-001" required /><div><label className="block text-sm font-medium text-slate-400 mb-1">Carica BOM (Excel, CSV o PDF)</label><div className="relative border border-slate-700 bg-slate-800/50 rounded-md p-4 text-center hover:bg-slate-800 transition-colors"><input type="file" accept=".csv,.xlsx,.xls,.pdf" onChange={handleFile} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"/><div className="flex flex-col items-center">{isProcessing ? <SpinnerIcon className="animate-spin text-electric-blue w-8 h-8"/> : <div className="flex gap-2"><FileExcelIcon /><FilePdfIcon /></div>}<p className="text-sm text-slate-300 mt-2">{isProcessing ? "Analisi PDF in corso..." : "Trascina file o clicca"}</p></div></div><p className="text-xs text-slate-500 mt-2"><strong>Excel:</strong> Col A: Codice, Col B: Qta.<br/><strong>PDF:</strong> Rilevamento automatico colonne.<br/><span className="text-electric-blue">Nota: Zeri iniziali rimossi.</span></p>{fileError && <p className="text-red-400 text-sm mt-1 bg-red-500/10 p-2 rounded border border-red-500/20">{fileError}</p>}{bom.length > 0 && !isProcessing && <div className="mt-2 p-2 bg-green-500/10 border border-green-500/20 rounded"><p className="text-green-400 text-sm font-bold">BOM caricata!</p><p className="text-green-300 text-xs">{bom.length} componenti.</p></div>}</div></div><footer className="p-4 border-t border-slate-800 flex justify-end"><button onClick={handleSubmit} disabled={bom.length === 0 || isProcessing} className="bg-electric-blue text-white font-bold py-2 px-4 rounded-lg hover:bg-electric-blue/90 disabled:bg-slate-700 disabled:text-slate-500 transition-all">Salva Prodotto</button></footer></div></div>);
+    return (
+        <div className="fixed inset-0 bg-black/70 z-50 flex justify-center items-center p-4 backdrop-blur-sm">
+            <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-700 rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+                <header className="p-5 border-b border-slate-800 flex justify-between"><h2 className="text-xl font-bold text-white">{product ? 'Modifica Prodotto' : 'Nuovo Prodotto'}</h2><button onClick={onClose} className="text-slate-500 hover:text-white"><XIcon /></button></header>
+                <div className="p-6 space-y-4 flex-grow overflow-y-auto">
+                    <div className="grid grid-cols-2 gap-4">
+                        <InputField label="Nome Prodotto" name="pname" value={name} onChange={(e) => setName(e.target.value)} placeholder="Es. Scheda Madre V1" required />
+                        <InputField label="Codice Prodotto" name="pcode" value={code} onChange={(e) => setCode(e.target.value)} placeholder="Es. PRD-001" required />
+                    </div>
+                    
+                    <div>
+                        <label className="block text-sm font-medium text-slate-400 mb-1">Carica BOM (Sovrascrive esistente)</label>
+                        <div className="relative border border-slate-700 bg-slate-800/50 rounded-md p-4 text-center hover:bg-slate-800 transition-colors">
+                            <input type="file" accept=".csv,.xlsx,.xls,.pdf" onChange={handleFile} className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"/>
+                            <div className="flex flex-col items-center">
+                                {isProcessing ? <SpinnerIcon className="animate-spin text-electric-blue w-8 h-8"/> : <div className="flex gap-2 text-electric-blue"><FileExcelIcon /><FilePdfIcon /></div>}
+                                <p className="text-sm text-slate-300 mt-2">{isProcessing ? "Analisi in corso..." : "Trascina file PDF o Excel qui"}</p>
+                            </div>
+                        </div>
+                        {fileError && <p className="text-red-400 text-sm mt-2 p-2 bg-red-500/10 rounded border border-red-500/20">{fileError}</p>}
+                    </div>
+
+                    {/* Anteprima BOM */}
+                    {bom.length > 0 && (
+                        <div className="mt-4">
+                            <div className="flex justify-between items-end mb-2">
+                                <label className="text-sm font-medium text-slate-400">Anteprima BOM ({bom.length} componenti)</label>
+                                <button onClick={() => setBom([])} className="text-xs text-red-400 hover:underline">Svuota</button>
+                            </div>
+                            <div className="border border-slate-700 rounded-lg overflow-hidden max-h-60 overflow-y-auto">
+                                <table className="w-full text-sm text-left text-slate-300">
+                                    <thead className="bg-slate-800 text-slate-400 sticky top-0">
+                                        <tr>
+                                            <th className="p-2">Codice</th>
+                                            <th className="p-2 text-center">Q.tà</th>
+                                            <th className="p-2 w-8"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-700">
+                                        {bom.map((b, i) => (
+                                            <tr key={i} className="hover:bg-slate-800/50">
+                                                <td className="p-2 font-mono">{b.sekoCode}</td>
+                                                <td className="p-2 text-center">{b.quantity}</td>
+                                                <td className="p-2 text-center"><button onClick={() => handleRemoveItem(i)} className="text-slate-500 hover:text-red-400"><XIcon className="w-4 h-4"/></button></td>
+                                            </tr>
+                                        ))}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    )}
+                </div>
+                <footer className="p-4 border-t border-slate-800 flex justify-end">
+                    <button onClick={onClose} className="mr-2 px-4 py-2 text-slate-300 hover:text-white">Annulla</button>
+                    <button onClick={handleSubmit} disabled={bom.length === 0 || isProcessing} className="bg-electric-blue text-white font-bold py-2 px-4 rounded-lg hover:bg-electric-blue/90 disabled:bg-slate-700 disabled:text-slate-500 transition-all">
+                        {product ? 'Aggiorna Prodotto' : 'Salva Prodotto'}
+                    </button>
+                </footer>
+            </div>
+        </div>
+    );
 };
 
-// --- VISTA FORECAST ---
-const ForecastView = ({ products, components, onAddProduct }) => {
-    const [plan, setPlan] = useState([{ productId: '', quantity: 0 }]); const [results, setResults] = useState(null);
-    const handlePlanChange = (index, field, value) => { const newPlan = [...plan]; newPlan[index][field] = value; setPlan(newPlan); };
-    const calculateForecast = () => { const agg = {}; plan.forEach(item => { const p = products.find(x=>x.id===item.productId); const q = parseFloat(item.quantity); if(p && q>0) { p.bom.forEach(c => { if(!agg[c.sekoCode]) agg[c.sekoCode]={t:0, b:[]}; const n = c.quantity * q; agg[c.sekoCode].t+=n; agg[c.sekoCode].b.push({p:p.name, pq:q, qpu:c.quantity, tot:n}); }); } }); setResults(Object.keys(agg).map(code => ({ code, desc: components.find(c=>c.sekoCode===code)?.description||'N/D', tot: agg[code].t, b: agg[code].b }))); };
-    const exportForecast = () => { if(!results) return; XLSX.writeFile(XLSX.utils.book_newWithSheets({"Forecast": XLSX.utils.json_to_sheet(results.map(r=>({'Codice':r.code, 'Desc':r.desc, 'Tot':r.tot, 'Dettaglio':r.b.map(x=>`${x.p}(${x.tot})`).join('; ')})))}), 'forecast.xlsx'); };
-    return (<div className="grid grid-cols-1 lg:grid-cols-3 gap-8"><div className="lg:col-span-1 space-y-6"><div className="bg-slate-900/50 border border-slate-800/50 p-6 rounded-xl"><div className="flex justify-between items-center mb-4"><h2 className="text-lg font-bold text-slate-200">Prodotti / BOM</h2><button onClick={() => onAddProduct(true)} className="text-xs bg-electric-blue px-2 py-1 rounded text-white">+ Nuovo</button></div><div className="max-h-60 overflow-y-auto space-y-2">{products.map(p => (<div key={p.id} className="p-3 bg-slate-800/50 rounded border border-slate-700/50 flex justify-between"><div><p className="font-bold text-slate-200 text-sm">{p.name}</p><p className="text-xs text-slate-400">{p.code}</p></div><span className="text-xs bg-slate-700 px-2 py-0.5 rounded text-slate-300">{p.bom.length} comp.</span></div>))}</div></div><div className="bg-slate-900/50 border border-slate-800/50 p-6 rounded-xl"><h2 className="text-lg font-bold text-slate-200 mb-4">Piano Produzione</h2>{plan.map((row, idx) => (<div key={idx} className="flex gap-2 items-end mb-2"><div className="flex-grow"><label className="text-xs text-slate-400">Prodotto</label><select className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm text-white" value={row.productId} onChange={(e) => handlePlanChange(idx, 'productId', e.target.value)}><option value="">Select...</option>{products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}</select></div><div className="w-24"><label className="text-xs text-slate-400">Qty</label><input type="number" className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm text-white" value={row.quantity} onChange={(e) => handlePlanChange(idx, 'quantity', e.target.value)} /></div>{plan.length>1 && <button onClick={()=>setPlan(plan.filter((_,i)=>i!==idx))} className="text-red-400 p-2"><XIcon/></button>}</div>))}<button onClick={()=>setPlan([...plan,{productId:'',quantity:0}])} className="text-xs text-electric-blue">+ Riga</button><button onClick={calculateForecast} className="w-full mt-6 bg-electric-blue text-white font-bold py-2 rounded shadow-lg hover:bg-electric-blue/90">Calcola</button></div></div><div className="lg:col-span-2 bg-slate-900/50 border border-slate-800/50 p-6 rounded-xl flex flex-col min-h-[500px]"><div className="flex justify-between items-center mb-4"><h2 className="text-lg font-bold text-slate-200">Risultato</h2>{results && <button onClick={exportForecast} className="text-green-400 border border-green-500/30 px-3 py-1 rounded text-sm">Export Excel</button>}</div>{!results ? <div className="flex-grow flex items-center justify-center text-slate-500"><p>Imposta piano e calcola.</p></div> : <div className="overflow-x-auto"><table className="w-full text-sm text-left text-slate-300"><thead className="text-xs text-slate-400 bg-slate-800/50"><tr><th className="p-3">Codice</th><th className="p-3">Desc</th><th className="p-3 text-center">Totale</th><th className="p-3">Dettagli</th></tr></thead><tbody className="divide-y divide-slate-800">{results.map((r, i) => (<tr key={i} className="hover:bg-slate-800/30"><td className="p-3 font-mono text-electric-blue">{r.code}</td><td className="p-3 truncate max-w-xs">{r.desc}</td><td className="p-3 text-center font-bold text-white">{r.tot}</td><td className="p-3 text-xs text-slate-400">{r.b.map((b,bi)=><div key={bi}>{b.p}: {b.tot}</div>)}</td></tr>))}</tbody></table></div>}</div></div>);
+// --- VISTA FORECAST (AGGIORNATA CON EDIT/DELETE) ---
+const ForecastView = ({ products, components, onAddProduct, onEditProduct, onDeleteProduct }) => {
+    const [plan, setPlan] = useState([{ productId: '', quantity: 0 }]); 
+    const [results, setResults] = useState(null);
+    
+    const handlePlanChange = (index, field, value) => { 
+        const newPlan = [...plan]; 
+        newPlan[index][field] = value; 
+        setPlan(newPlan); 
+    };
+    
+    const calculateForecast = () => { 
+        const agg = {}; 
+        plan.forEach(item => { 
+            const p = products.find(x=>x.id===item.productId); 
+            const q = parseFloat(item.quantity); 
+            if(p && q>0) { 
+                p.bom.forEach(c => { 
+                    if(!agg[c.sekoCode]) agg[c.sekoCode]={t:0, b:[]}; 
+                    const n = c.quantity * q; 
+                    agg[c.sekoCode].t+=n; 
+                    agg[c.sekoCode].b.push({p:p.name, pq:q, qpu:c.quantity, tot:n}); 
+                }); 
+            } 
+        }); 
+        setResults(Object.keys(agg).map(code => ({ 
+            code, 
+            desc: components.find(c=>c.sekoCode===code)?.description||'N/D', 
+            tot: agg[code].t, 
+            b: agg[code].b 
+        }))); 
+    };
+    
+    const exportForecast = () => { 
+        if(!results) return; 
+        XLSX.writeFile(XLSX.utils.book_newWithSheets({"Forecast": XLSX.utils.json_to_sheet(results.map(r=>({'Codice':r.code, 'Desc':r.desc, 'Tot':r.tot, 'Dettaglio':r.b.map(x=>`${x.p}(${x.tot})`).join('; ')})))}), 'forecast.xlsx'); 
+    };
+
+    return (
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            <div className="lg:col-span-1 space-y-6">
+                {/* LISTA PRODOTTI */}
+                <div className="bg-slate-900/50 border border-slate-800/50 p-6 rounded-xl">
+                    <div className="flex justify-between items-center mb-4">
+                        <h2 className="text-lg font-bold text-slate-200">Prodotti / BOM</h2>
+                        <button onClick={onAddProduct} className="text-xs bg-electric-blue px-2 py-1 rounded text-white hover:bg-electric-blue/90">+ Nuovo</button>
+                    </div>
+                    <div className="max-h-60 overflow-y-auto space-y-2 pr-1">
+                        {products.length === 0 ? <p className="text-slate-500 text-sm">Nessun prodotto.</p> : products.map(p => (
+                            <div key={p.id} className="p-3 bg-slate-800/50 rounded border border-slate-700/50 flex justify-between items-center group">
+                                <div>
+                                    <p className="font-bold text-slate-200 text-sm">{p.name}</p>
+                                    <p className="text-xs text-slate-400">{p.code}</p>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                    <span className="text-xs bg-slate-700 px-2 py-0.5 rounded text-slate-300">{p.bom.length}</span>
+                                    <button onClick={() => onEditProduct(p)} className="text-slate-500 hover:text-electric-blue p-1"><EditIcon className="w-4 h-4"/></button>
+                                    <button onClick={() => onDeleteProduct(p.id)} className="text-slate-500 hover:text-red-500 p-1"><TrashIcon className="w-4 h-4"/></button>
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+
+                {/* PIANO PRODUZIONE */}
+                <div className="bg-slate-900/50 border border-slate-800/50 p-6 rounded-xl">
+                    <h2 className="text-lg font-bold text-slate-200 mb-4">Piano Produzione</h2>
+                    {plan.map((row, idx) => (
+                        <div key={idx} className="flex gap-2 items-end mb-2">
+                            <div className="flex-grow">
+                                <label className="text-xs text-slate-400">Prodotto</label>
+                                <select className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm text-white focus:ring-1 focus:ring-electric-blue" value={row.productId} onChange={(e) => handlePlanChange(idx, 'productId', e.target.value)}>
+                                    <option value="">Seleziona...</option>
+                                    {products.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                                </select>
+                            </div>
+                            <div className="w-24">
+                                <label className="text-xs text-slate-400">Q.tà</label>
+                                <input type="number" className="w-full bg-slate-800 border border-slate-700 rounded p-2 text-sm text-white focus:ring-1 focus:ring-electric-blue" value={row.quantity} onChange={(e) => handlePlanChange(idx, 'quantity', e.target.value)} />
+                            </div>
+                            {plan.length > 1 && <button onClick={()=>setPlan(plan.filter((_,i)=>i!==idx))} className="text-red-400 p-2 hover:bg-red-500/10 rounded"><XIcon/></button>}
+                        </div>
+                    ))}
+                    <button onClick={()=>setPlan([...plan,{productId:'',quantity:0}])} className="text-xs text-electric-blue mt-2 hover:underline">+ Aggiungi Riga</button>
+                    <button onClick={calculateForecast} className="w-full mt-6 bg-electric-blue text-white font-bold py-2 rounded shadow-lg hover:bg-electric-blue/90">Calcola Fabbisogno</button>
+                </div>
+            </div>
+
+            {/* RISULTATI */}
+            <div className="lg:col-span-2 bg-slate-900/50 border border-slate-800/50 p-6 rounded-xl flex flex-col min-h-[500px]">
+                <div className="flex justify-between items-center mb-4">
+                    <h2 className="text-lg font-bold text-slate-200">Risultato Forecast</h2>
+                    {results && <button onClick={exportForecast} className="text-green-400 border border-green-500/30 px-3 py-1 rounded text-sm hover:bg-green-500/10">Esporta Excel</button>}
+                </div>
+                {!results ? (
+                    <div className="flex-grow flex items-center justify-center text-slate-500">
+                        <div className="text-center">
+                            <CalculatorIcon className="w-12 h-12 mx-auto mb-2 opacity-50"/>
+                            <p>Configura il piano di produzione e calcola.</p>
+                        </div>
+                    </div>
+                ) : (
+                    <div className="overflow-x-auto flex-grow">
+                        <table className="w-full text-sm text-left text-slate-300">
+                            <thead className="text-xs text-slate-400 bg-slate-800/50">
+                                <tr>
+                                    <th className="p-3">Codice</th>
+                                    <th className="p-3">Descrizione</th>
+                                    <th className="p-3 text-center">Totale Nec.</th>
+                                    <th className="p-3">Dettaglio Utilizzo</th>
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-800">
+                                {results.map((r, i) => (
+                                    <tr key={i} className="hover:bg-slate-800/30">
+                                        <td className="p-3 font-mono text-electric-blue font-bold">{r.code}</td>
+                                        <td className="p-3 truncate max-w-xs">{r.desc}</td>
+                                        <td className="p-3 text-center font-bold text-white text-lg">{r.tot}</td>
+                                        <td className="p-3">
+                                            <div className="flex flex-wrap gap-1">
+                                                {r.b.map((b,bi)=>(
+                                                    <span key={bi} className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-slate-700 text-slate-300">
+                                                        {b.p}: <span className="text-white ml-1 font-bold">{b.tot}</span>
+                                                    </span>
+                                                ))}
+                                            </div>
+                                        </td>
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                )}
+            </div>
+        </div>
+    );
 };
 
 // --- TABLE COMPONENTI ---
@@ -346,7 +587,7 @@ const ComponentTable = ({ components, onEdit, onDelete }) => {
   );
 };
 
-// --- DASHBOARD (REINSERITA!) ---
+// --- DASHBOARD ---
 const Dashboard = ({ components }) => {
     const stats = useMemo(() => {
         const totalComponents = components.length;
@@ -398,7 +639,11 @@ const App = () => {
     const [user, setUser] = useState(null); const [authReady, setAuthReady] = useState(false); const [loginError, setLoginError] = useState(null); const [configError, setConfigError] = useState(null);
     const [components, setComponents] = useState([]); const [products, setProducts] = useState([]); const [loading, setLoading] = useState(true); const [dbError, setDbError] = useState(null);
     const [isModalOpen, setIsModalOpen] = useState(false); const [isBomModalOpen, setIsBomModalOpen] = useState(false); const [isCsvModalOpen, setIsCsvModalOpen] = useState(false); const [isAselUpdateModalOpen, setIsAselUpdateModalOpen] = useState(false); const [isProductModalOpen, setIsProductModalOpen] = useState(false);
-    const [editingComponent, setEditingComponent] = useState(null); const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark'); const [searchQuery, setSearchQuery] = useState(''); const [currentView, setCurrentView] = useState('dashboard');
+    
+    const [editingComponent, setEditingComponent] = useState(null); 
+    const [editingProduct, setEditingProduct] = useState(null); // Per gestire l'editing dei prodotti
+
+    const [theme, setTheme] = useState(localStorage.getItem('theme') || 'dark'); const [searchQuery, setSearchQuery] = useState(''); const [currentView, setCurrentView] = useState('dashboard');
 
     useEffect(() => {
         if (!checkFirebaseConfig(firebaseConfig)) { setConfigError("Configurazione Firebase mancante."); return; }
@@ -424,10 +669,68 @@ const App = () => {
     const handleDeleteComponent = useCallback(async (id) => { if (window.confirm('Eliminare?')) await deleteDoc(doc(getFirestore(), "components", id)); }, []);
     const handleCsvImport = useCallback(async (list) => { if (!user) return; const db = getFirestore(); const batch = writeBatch(db); list.forEach(c => { const wl = addLogEntry(c, 'Import CSV', 'Creato.', 'Massiva'); const ref = doc(collection(db, 'components')); batch.set(ref, wl); }); try { await batch.commit(); alert("Import completato."); setIsCsvModalOpen(false); } catch (e) { alert(e.message); } }, [user]);
     const handleAselUpdate = useCallback(async (updates) => { if (!user) return; const db = getFirestore(); const batch = writeBatch(db); const map = new Map(components.map(c => [c.sekoCode, c])); updates.forEach(u => { const exist = map.get(u.sekoCode); if (exist && exist.aselCode !== u.aselCode) { const wl = addLogEntry(exist, 'Update Asel', `Da ${exist.aselCode} a ${u.aselCode}`, 'CSV Update'); batch.update(doc(db, "components", exist.id), { aselCode: u.aselCode, logs: wl.logs }); } }); try { await batch.commit(); alert("Aggiornamento completato."); setIsAselUpdateModalOpen(false); } catch(e) { alert(e.message); } }, [user, components]);
-    const handleSaveProduct = useCallback(async (productData) => { if (!user) return; const db = getFirestore(); try { await addDoc(collection(db, "products"), { ...productData, createdAt: Timestamp.now().toDate().toISOString(), createdBy: user.email }); alert("Prodotto salvato."); } catch (e) { console.error(e); alert("Errore salvataggio."); } }, [user]);
+    
+    // --- GESTIONE PRODOTTI ---
+    const handleSaveProduct = useCallback(async (productData) => { 
+        if (!user) return; 
+        const db = getFirestore(); 
+        try { 
+            if (productData.id) {
+                // Modifica esistente
+                const { id, ...data } = productData;
+                await setDoc(doc(db, "products", id), { ...data, updatedAt: Timestamp.now().toDate().toISOString(), updatedBy: user.email }, { merge: true });
+                alert("Prodotto aggiornato.");
+            } else {
+                // Nuovo
+                await addDoc(collection(db, "products"), { ...productData, createdAt: Timestamp.now().toDate().toISOString(), createdBy: user.email }); 
+                alert("Prodotto creato."); 
+            }
+        } catch (e) { console.error(e); alert("Errore salvataggio."); } 
+    }, [user]);
+
+    const handleDeleteProduct = useCallback(async (id) => {
+        if (!user) return;
+        if (window.confirm("Sei sicuro di voler eliminare questo prodotto e la sua BOM?")) {
+            try {
+                await deleteDoc(doc(getFirestore(), "products", id));
+            } catch(e) { alert("Errore eliminazione: " + e.message); }
+        }
+    }, [user]);
+
     const handleExportView = useCallback(() => { const data = filteredComponents.flatMap(c => (c.suppliers.length ? c.suppliers : [{}]).map(s => ({ 'Codice': c.sekoCode, 'Descrizione': c.description, 'Fornitore': s.name||'N/D', 'Costo': s.cost||0 }))); XLSX.writeFile(XLSX.utils.book_newWithSheets({ "Vista": XLSX.utils.json_to_sheet(data) }), 'export.xlsx'); }, [filteredComponents]);
     const toggleTheme = () => setTheme(p => p === 'light' ? 'dark' : 'light');
+    
     if (configError) return <ErrorScreen title="Config Error" message={configError} />; if (!authReady) return <LoadingScreen message="Auth..." />; if (!user) return <LoginPage onLogin={handleLogin} error={loginError} />;
-    return (<div className="min-h-screen bg-slate-100 dark:bg-slate-950 text-gray-800 dark:text-slate-200"><Header theme={theme} toggleTheme={toggleTheme} user={user} onLogout={handleLogout} /><main className="container mx-auto p-4 md:p-8"><div className="flex items-center gap-4 mb-8 border-b border-slate-800 pb-4 overflow-x-auto"><button onClick={() => setCurrentView('dashboard')} className={`flex items-center gap-2 font-semibold py-2 px-4 rounded-lg whitespace-nowrap transition-colors ${currentView === 'dashboard' ? 'bg-electric-blue text-white' : 'bg-slate-800/50 text-slate-300 hover:bg-slate-700'}`}><ChartBarIcon /> Dashboard</button><button onClick={() => setCurrentView('components')} className={`flex items-center gap-2 font-semibold py-2 px-4 rounded-lg whitespace-nowrap transition-colors ${currentView === 'components' ? 'bg-electric-blue text-white' : 'bg-slate-800/50 text-slate-300 hover:bg-slate-700'}`}><DocumentDuplicateIcon /> Componenti</button><button onClick={() => setCurrentView('forecast')} className={`flex items-center gap-2 font-semibold py-2 px-4 rounded-lg whitespace-nowrap transition-colors ${currentView === 'forecast' ? 'bg-electric-blue text-white' : 'bg-slate-800/50 text-slate-300 hover:bg-slate-700'}`}><CalculatorIcon /> Forecast & BOM</button></div>{loading ? <LoadingScreen message="Loading..." /> : dbError ? <ErrorScreen title="DB Error" message={dbError} /> : (<>{currentView === 'dashboard' && <Dashboard components={components} />}{currentView === 'components' && <ComponentsView components={components} onEdit={(c) => {setEditingComponent(c); setIsModalOpen(true);}} onDelete={handleDeleteComponent} onOpenModal={() => {setEditingComponent(null); setIsModalOpen(true);}} onOpenBomModal={() => setIsBomModalOpen(true)} onOpenCsvModal={() => setIsCsvModalOpen(true)} onOpenAselUpdateModal={() => setIsAselUpdateModalOpen(true)} filteredComponents={filteredComponents} searchQuery={searchQuery} setSearchQuery={setSearchQuery} handleExportView={handleExportView} />}{currentView === 'forecast' && <ForecastView products={products} components={components} onAddProduct={() => setIsProductModalOpen(true)} />}</>)}</main>{isModalOpen && <ComponentModal component={editingComponent} onClose={() => setIsModalOpen(false)} onSave={handleSaveComponent} />}{isBomModalOpen && <BomQuoteModal isOpen={isBomModalOpen} onClose={() => setIsBomModalOpen(false)} components={components} />}{isCsvModalOpen && <CsvImportModal isOpen={isCsvModalOpen} onClose={() => setIsCsvModalOpen(false)} onImport={handleCsvImport} />}{isAselUpdateModalOpen && <AselUpdateModal isOpen={isAselUpdateModalOpen} onClose={() => setIsAselUpdateModalOpen(false)} onUpdate={handleAselUpdate} />}{isProductModalOpen && <ProductModal isOpen={isProductModalOpen} onClose={() => setIsProductModalOpen(false)} onSave={handleSaveProduct} />}</div>);
+    
+    return (
+        <div className="min-h-screen bg-slate-100 dark:bg-slate-950 text-gray-800 dark:text-slate-200">
+            <Header theme={theme} toggleTheme={toggleTheme} user={user} onLogout={handleLogout} />
+            <main className="container mx-auto p-4 md:p-8">
+                <div className="flex items-center gap-4 mb-8 border-b border-slate-800 pb-4 overflow-x-auto">
+                    <button onClick={() => setCurrentView('dashboard')} className={`flex items-center gap-2 font-semibold py-2 px-4 rounded-lg whitespace-nowrap transition-colors ${currentView === 'dashboard' ? 'bg-electric-blue text-white' : 'bg-slate-800/50 text-slate-300 hover:bg-slate-700'}`}><ChartBarIcon /> Dashboard</button>
+                    <button onClick={() => setCurrentView('components')} className={`flex items-center gap-2 font-semibold py-2 px-4 rounded-lg whitespace-nowrap transition-colors ${currentView === 'components' ? 'bg-electric-blue text-white' : 'bg-slate-800/50 text-slate-300 hover:bg-slate-700'}`}><DocumentDuplicateIcon /> Componenti</button>
+                    <button onClick={() => setCurrentView('forecast')} className={`flex items-center gap-2 font-semibold py-2 px-4 rounded-lg whitespace-nowrap transition-colors ${currentView === 'forecast' ? 'bg-electric-blue text-white' : 'bg-slate-800/50 text-slate-300 hover:bg-slate-700'}`}><CalculatorIcon /> Forecast & BOM</button>
+                </div>
+                {loading ? <LoadingScreen message="Loading..." /> : dbError ? <ErrorScreen title="DB Error" message={dbError} /> : (
+                    <>
+                        {currentView === 'dashboard' && <Dashboard components={components} />}
+                        {currentView === 'components' && <ComponentsView components={components} onEdit={(c) => {setEditingComponent(c); setIsModalOpen(true);}} onDelete={handleDeleteComponent} onOpenModal={() => {setEditingComponent(null); setIsModalOpen(true);}} onOpenBomModal={() => setIsBomModalOpen(true)} onOpenCsvModal={() => setIsCsvModalOpen(true)} onOpenAselUpdateModal={() => setIsAselUpdateModalOpen(true)} filteredComponents={filteredComponents} searchQuery={searchQuery} setSearchQuery={setSearchQuery} handleExportView={handleExportView} />}
+                        {currentView === 'forecast' && <ForecastView 
+                            products={products} 
+                            components={components} 
+                            onAddProduct={() => { setEditingProduct(null); setIsProductModalOpen(true); }} 
+                            onEditProduct={(p) => { setEditingProduct(p); setIsProductModalOpen(true); }}
+                            onDeleteProduct={handleDeleteProduct}
+                        />}
+                    </>
+                )}
+            </main>
+            {isModalOpen && <ComponentModal component={editingComponent} onClose={() => setIsModalOpen(false)} onSave={handleSaveComponent} />}
+            {isBomModalOpen && <BomQuoteModal isOpen={isBomModalOpen} onClose={() => setIsBomModalOpen(false)} components={components} />}
+            {isCsvModalOpen && <CsvImportModal isOpen={isCsvModalOpen} onClose={() => setIsCsvModalOpen(false)} onImport={handleCsvImport} />}
+            {isAselUpdateModalOpen && <AselUpdateModal isOpen={isAselUpdateModalOpen} onClose={() => setIsAselUpdateModalOpen(false)} onUpdate={handleAselUpdate} />}
+            {isProductModalOpen && <ProductModal isOpen={isProductModalOpen} onClose={() => setIsProductModalOpen(false)} onSave={handleSaveProduct} product={editingProduct} />}
+        </div>
+    );
 };
 export default App;

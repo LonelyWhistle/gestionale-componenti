@@ -1,5 +1,5 @@
 {
   "name": "Gestionale Componenti Elettronici",
-  "description": "Un'applicazione per la gestione di componenti elettronici, inclusi fornitori, costi e codici di prodotto. Permette di aggiungere, modificare e visualizzare i dettagli dei componenti in un'interfaccia pulita e moderna.",
+  "description": "Un'applicazione creata da Fadda Luca per la gestione di componenti elettronici, inclusi fornitori, costi e codici di prodotto. Permette di aggiungere, modificare e visualizzare i dettagli dei componenti in un'interfaccia pulita e moderna.",
   "requestFramePermissions": []
 }

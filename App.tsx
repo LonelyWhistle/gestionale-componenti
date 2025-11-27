@@ -6,7 +6,7 @@ import {
     signInWithEmailAndPassword,
     signOut,
     setPersistence,
-    browserLocalPersistence
+    browserLocalPersistence,
 } from 'firebase/auth';
 import { 
     getFirestore, 

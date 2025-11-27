@@ -6,7 +6,7 @@ import {
     signInWithEmailAndPassword,
     signOut,
     setPersistence,
-    browserLocalPersistence,
+    browserLocalPersistence
 } from 'firebase/auth';
 import { 
     getFirestore, 
@@ -68,7 +68,7 @@ interface Product {
 
 // --- CONFIGURAZIONE FIREBASE ---
 const firebaseConfig = {
-  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
+  apiKey: .import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,

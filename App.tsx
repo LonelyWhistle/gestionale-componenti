@@ -1109,7 +1109,7 @@ const ForecastView = ({ products, components, onAddProduct, onEditProduct, onDel
         }));
         const ws = XLSX.utils.json_to_sheet(exportData);
         const wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, "Forecast");
+        XLSX.utils.book_append_sheet(workbook, worksheet, "Forecast");
         XLSX.writeFile(wb, "forecast_fabbisogno.xlsx");
     };
 
@@ -1372,25 +1372,91 @@ const App = () => {
         }
     }, []);
 
-    const handleCsvImport = useCallback(async (newComponents:any) => {
+    const handleCsvImport = useCallback(async (importedComponents:any[]) => {
         if (!user) return;
         const db = getFirestore();
         const batch = writeBatch(db);
-        newComponents.forEach((comp:any) => {
-            const compWithLog = addLogEntry(comp, 'Importazione CSV', 'Componente creato da importazione.', 'Importazione massiva');
-            const newDocRef = doc(collection(db, 'components'));
-            batch.set(newDocRef, compWithLog);
+
+        // Mappa dei componenti esistenti per lookup rapido
+        const existingMap = new Map(components.map(c => [c.sekoCode, c]));
+
+        let createdCount = 0;
+        let updatedCount = 0;
+
+        importedComponents.forEach(importedComp => {
+            const existingComp = existingMap.get(importedComp.sekoCode);
+
+            if (existingComp) {
+                // --- LOGICA DI AGGIORNAMENTO (MERGE FORNITORI) ---
+                
+                // Estrai i nuovi fornitori dall'oggetto importato
+                const newSuppliers = importedComp.suppliers || [];
+                
+                // Filtra i fornitori che sono GIA' presenti nel componente esistente
+                // (Controlliamo se c'è già un fornitore con lo stesso nome E part number)
+                const uniqueNewSuppliers = newSuppliers.filter((ns: any) => 
+                    !existingComp.suppliers.some((es: any) => 
+                        es.name === ns.name && es.partNumber === ns.partNumber
+                    )
+                );
+
+                // Se ci sono fornitori veramente nuovi da aggiungere
+                if (uniqueNewSuppliers.length > 0) {
+                    const updatedSuppliers = [...existingComp.suppliers, ...uniqueNewSuppliers];
+                    
+                    const docRef = doc(db, 'components', existingComp.id);
+                    
+                    // Aggiungiamo un log per tracciare l'aggiornamento
+                    const logEntry = {
+                        id: `log_${Date.now()}_${Math.random()}`,
+                        timestamp: Timestamp.now().toDate().toISOString(),
+                        userId: user.uid,
+                        username: user.email,
+                        action: 'Importazione CSV (Aggiornamento)',
+                        details: `Aggiunti ${uniqueNewSuppliers.length} fornitori.`,
+                        note: 'Merge automatico da importazione'
+                    };
+
+                    const currentLogs = existingComp.logs || [];
+                    
+                    batch.update(docRef, { 
+                        suppliers: updatedSuppliers,
+                        logs: [logEntry, ...currentLogs]
+                    });
+                    updatedCount++;
+                }
+            } else {
+                // --- LOGICA DI CREAZIONE (NUOVO COMPONENTE) ---
+                const docRef = doc(collection(db, 'components'));
+                
+                // Aggiungiamo il log di creazione
+                const compWithLog = {
+                    ...importedComp,
+                    logs: [{
+                        id: `log_${Date.now()}_${Math.random()}`,
+                        timestamp: Timestamp.now().toDate().toISOString(),
+                        userId: user.uid,
+                        username: user.email,
+                        action: 'Importazione CSV (Creazione)',
+                        details: 'Componente creato da importazione massiva.',
+                        note: 'Importazione iniziale'
+                    }]
+                };
+                
+                batch.set(docRef, compWithLog);
+                createdCount++;
+            }
         });
 
         try {
             await batch.commit();
-            alert(`Importazione completata con successo! ${newComponents.length} nuovi componenti sono stati aggiunti.`);
+            alert(`Importazione completata!\n- Creati: ${createdCount}\n- Aggiornati: ${updatedCount}`);
             setIsCsvModalOpen(false);
         } catch (err:any) {
             console.error("Errore durante l'importazione CSV:", err);
-            alert(`Si è verificato un errore durante il salvataggio dei componenti: ${err.message}`);
+            alert(`Errore batch: ${err.message}`);
         }
-    }, [user]);
+    }, [user, components]);
 
     const handleAselUpdateFromCsv = useCallback(async (updates:any) => {
         if (!user) return;

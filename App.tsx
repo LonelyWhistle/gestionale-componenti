@@ -68,7 +68,7 @@ interface Product {
 
 // --- CONFIGURAZIONE FIREBASE ---
 const firebaseConfig = {
-  apiKey: .import.meta.env.VITE_FIREBASE_API_KEY,
+  apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
   authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN,
   projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID,
   storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET,
@@ -393,6 +393,16 @@ const BomQuoteModal = ({ isOpen, onClose, components }: any) => {
             <div className="bg-slate-900/80 backdrop-blur-xl border border-slate-700 rounded-xl shadow-2xl w-full max-w-5xl max-h-[90vh] flex flex-col">
                 <header className="flex justify-between items-center p-5 border-b border-slate-800"><h2 className="text-xl font-bold text-slate-100">Quotazione Distinta Base (BOM)</h2><button onClick={onClose} className="text-slate-500 hover:text-slate-100"><XIcon /></button></header>
                 <div className="p-6 flex-grow overflow-y-auto space-y-6">
+                     {/* ISTRUZIONI AGGIUNTE */}
+                     <div className="mb-4 p-4 bg-slate-800/50 rounded-lg border border-slate-700/50 text-sm text-slate-300">
+                        <p className="font-semibold text-electric-blue mb-1">Istruzioni:</p>
+                        <ul className="list-disc list-inside space-y-1">
+                            <li>Incolla i codici <strong>Seko</strong> nella casella sottostante.</li>
+                            <li>Inserisci <strong>un codice per riga</strong>.</li>
+                            <li>Il sistema cercherà il miglior prezzo tra i fornitori censiti.</li>
+                        </ul>
+                    </div>
+                    
                     <div><label htmlFor="bom-input" className="block text-sm font-medium text-slate-400 mb-2">Incolla i codici Seko (uno per riga)</label><textarea id="bom-input" rows={8} className="w-full p-3 font-mono bg-slate-800/50 border border-slate-700 rounded-md" placeholder="514846&#10;823301" value={sekoCodes} onChange={(e) => setSekoCodes(e.target.value)} /></div>
                     {searched && (<div><h3 className="text-lg font-semibold mb-4">Risultati</h3>
                         <div className="border border-slate-800 rounded-lg overflow-hidden"><table className="w-full text-sm">
@@ -486,6 +496,22 @@ const CsvImportModal = ({ isOpen, onClose, onImport }: any) => {
         <div className="fixed inset-0 bg-black/70 z-50 flex justify-center items-center p-4"><div className="bg-slate-900/80 w-full max-w-2xl max-h-[90vh] flex flex-col rounded-xl border border-slate-700">
             <header className="flex justify-between items-center p-5 border-b border-slate-800"><h2 className="text-xl font-bold">Importa Componenti</h2><button onClick={onClose} className="text-slate-500 hover:text-slate-100"><XIcon /></button></header>
             <div className="p-6 flex-grow overflow-y-auto">
+                {/* ISTRUZIONI AGGIUNTE */}
+                <div className="mb-6 p-4 bg-slate-800/50 rounded-lg border border-slate-700/50 text-sm">
+                    <p className="font-semibold text-slate-200 mb-2">Struttura del file (Excel/CSV):</p>
+                    <p className="text-slate-400 mb-2">La prima riga deve contenere le seguenti intestazioni (esatte):</p>
+                    <ul className="list-disc list-inside text-slate-300 font-mono space-y-1">
+                        <li><span className="text-electric-blue">sekoCode</span> (Obbligatorio)</li>
+                        <li>aselCode</li>
+                        <li>description</li>
+                        <li>supplierName</li>
+                        <li>supplierPartNumber</li>
+                        <li>cost</li>
+                        <li>leadTime</li>
+                        <li>packaging</li>
+                    </ul>
+                </div>
+
                 <div onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }} onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); }} onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }} onDrop={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); if (e.dataTransfer.files?.[0]) handleFileProcess(e.dataTransfer.files[0]); }}
                     className={`relative border-2 border-dashed rounded-lg p-10 text-center transition-colors ${isDragging ? 'border-electric-blue bg-electric-blue/10' : 'border-slate-600'}`}>
                     <FileImportIcon className="mx-auto h-12 w-12 text-slate-500"/>
@@ -534,6 +560,17 @@ const AselUpdateModal = ({ isOpen, onClose, onUpdate }: any) => {
                     <button onClick={onClose} className="text-slate-500 hover:text-slate-100"><XIcon /></button>
                 </header>
                 <div className="p-6 flex-grow overflow-y-auto">
+                    {/* ISTRUZIONI AGGIUNTE */}
+                    <div className="mb-6 p-4 bg-slate-800/50 rounded-lg border border-slate-700/50 text-sm">
+                        <p className="font-semibold text-slate-200 mb-2">Istruzioni per l'aggiornamento:</p>
+                        <ul className="list-disc list-inside text-slate-300 space-y-1">
+                            <li>Carica un file Excel o CSV.</li>
+                            <li><strong>Colonna A:</strong> Codice Seko.</li>
+                            <li><strong>Colonna B:</strong> Nuovo Codice Asel.</li>
+                            <li>La prima riga (intestazione) viene ignorata se contiene "sekoCode".</li>
+                        </ul>
+                    </div>
+
                     <div 
                         onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(true); }} 
                         onDragLeave={(e) => { e.preventDefault(); e.stopPropagation(); setIsDragging(false); }} 
@@ -556,7 +593,7 @@ const AselUpdateModal = ({ isOpen, onClose, onUpdate }: any) => {
     );
 };
 
-// --- COMPONENTE PRODUCT MODAL (ALGORITMO ROW-SCAN PER PDF) ---
+// --- COMPONENTE PRODUCT MODAL (PDF ROW-SCAN + EXCEL FLEX HEADER) ---
 const ProductModal = ({ isOpen, onClose, onSave, product }: any) => {
     const [name, setName] = useState('');
     const [code, setCode] = useState('');
@@ -578,19 +615,16 @@ const ProductModal = ({ isOpen, onClose, onSave, product }: any) => {
 
     const cleanCode = (c: any) => String(c).replace(/^0+/, '').trim();
 
-    // NUOVO ALGORITMO: Scansione per Riga (molto più affidabile per PDF disallineati)
+    // --- ALGORITMO PDF ---
     const extractBomDataSmartly = (items: any[]) => {
         const extracted: any[] = [];
-        const yTolerance = 5; // Tolleranza per considerare elementi sulla stessa riga
-
-        // 1. Raggruppa gli elementi per "Riga"
+        const yTolerance = 5;
         items.sort((a, b) => b.y - a.y);
 
         const lines: any[] = [];
         if (items.length > 0) {
             let currentLine = [items[0]];
             let currentY = items[0].y;
-
             for (let i = 1; i < items.length; i++) {
                 if (Math.abs(items[i].y - currentY) < yTolerance) {
                     currentLine.push(items[i]);
@@ -605,34 +639,24 @@ const ProductModal = ({ isOpen, onClose, onSave, product }: any) => {
             lines.push(currentLine);
         }
 
-        // 2. Analizza ogni riga ricostruita
         lines.forEach((line) => {
             const lineText = line.map((i: any) => i.str).join(" ");
-            
-            // Regex: cerca parole che iniziano con 0000 seguite da numeri (Seko) OPPURE alfanumerici lunghi
             const sekoRegex = /\b0000\d+\b/; 
-            const genericCodeRegex = /\b[A-Z0-9\-\.]{6,}\b/;
-
+            const genericCodeRegex = /\b[A-Z0-9\-\.]{5,}\b/;
             let match = lineText.match(sekoRegex) || lineText.match(genericCodeRegex);
 
             if (match) {
                 const rawCode = match[0];
-                if (['DESCRIPTION', 'REFERENCE', 'SECTION', 'CODICE', 'NUMBER', 'COMPILED', 'CHECKED'].some(k => rawCode.toUpperCase().includes(k))) return;
+                if (['DESCRIPTION', 'REFERENCE', 'SECTION', 'CODICE', 'NUMBER', 'COMPILED', 'CHECKED', 'TITLE', 'DATE', 'REV', 'SHEET'].some(k => rawCode.toUpperCase().includes(k))) return;
 
                 const cleanedCode = cleanCode(rawCode);
                 const textWithoutCode = lineText.replace(rawCode, "");
-                
-                // Cerca numeri interi isolati (Quantità)
                 const numbers = textWithoutCode.match(/\b\d{1,4}\b/g);
-
-                let qty = 1; // Default
+                let qty = 1;
 
                 if (numbers) {
                     const validNumbers = numbers.map((n: string) => parseFloat(n)).filter((n: number) => n > 0 && n < 5000);
-                    
                     if (validNumbers.length > 0) {
-                        // Euristica: Se troviamo numeri piccoli (1-50), è probabile siano quantità
-                        // Altrimenti prendiamo il primo numero valido
                         const likelyQty = validNumbers.find((n: number) => n < 50); 
                         if (likelyQty) qty = likelyQty;
                         else qty = validNumbers[0];
@@ -646,7 +670,6 @@ const ProductModal = ({ isOpen, onClose, onSave, product }: any) => {
                 }
             }
         });
-
         return extracted;
     };
 
@@ -656,10 +679,10 @@ const ProductModal = ({ isOpen, onClose, onSave, product }: any) => {
         setFileError(null);
         setIsProcessing(true);
 
+        // --- GESTIONE PDF ---
         if (file.type === 'application/pdf') {
             try {
                 const pdfjsLib = await import('pdfjs-dist');
-                // Importante: usa unpkg per il worker
                 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://unpkg.com/pdfjs-dist@${pdfjsLib.version}/build/pdf.worker.min.mjs`;
                 
                 const fileUrl = URL.createObjectURL(file);
@@ -680,12 +703,8 @@ const ProductModal = ({ isOpen, onClose, onSave, product }: any) => {
                 }
 
                 const extracted = extractBomDataSmartly(allItems);
-
-                if (extracted && extracted.length > 0) {
-                    setBom(extracted);
-                } else {
-                    setFileError("Nessun componente trovato. Il PDF potrebbe non contenere testo selezionabile.");
-                }
+                if (extracted && extracted.length > 0) setBom(extracted);
+                else setFileError("Nessun componente trovato nel PDF.");
 
             } catch (err: any) { 
                 console.error(err); 
@@ -695,24 +714,100 @@ const ProductModal = ({ isOpen, onClose, onSave, product }: any) => {
             return;
         }
 
-        // Gestione Excel
+        // --- GESTIONE EXCEL (XLSX e XLS) ---
         const reader = new FileReader();
         reader.onload = (evt: any) => {
             try {
                 const wb = XLSX.read(evt.target.result, { type: 'binary' });
                 const ws = wb.Sheets[wb.SheetNames[0]];
-                const data = XLSX.utils.sheet_to_json(ws, { header: 1 }); 
+                
+                // Leggiamo tutte le righe come array di array
+                const data = XLSX.utils.sheet_to_json(ws, { header: 1 }) as any[][];
+                
                 const newBom: any[] = [];
-                data.forEach((row: any, index: number) => {
-                    if (index === 0 && isNaN(row[1])) return;
-                    const compCode = String(row[0] || '').trim();
-                    const qty = parseFloat(row[1]);
-                    if (compCode && !isNaN(qty) && qty > 0) {
-                        newBom.push({ sekoCode: cleanCode(compCode), quantity: qty });
+                let codeIdx = -1;
+                let qtyIdx = -1;
+                let startRow = 0;
+
+                // Parole chiave per cercare le colonne (Case Insensitive)
+                const codeKeywords = ['part code', 'partcode', 'part no', 'codice', 'code', 'part number'];
+                const qtyKeywords = ['q.ty', 'q.ta', 'qta', 'qty', 'quantity', 'quantità'];
+
+                // 1. Cerca la riga di intestazione (scansiona fino a 20 righe)
+                for (let r = 0; r < Math.min(20, data.length); r++) {
+                    const row = data[r];
+                    if (!row || row.length === 0) continue;
+
+                    // Cerca le colonne in questa riga
+                    for (let c = 0; c < row.length; c++) {
+                        const cellValue = String(row[c]).toLowerCase().trim();
+                        if (codeKeywords.some(k => cellValue === k || cellValue.includes(k))) codeIdx = c;
+                        if (qtyKeywords.some(k => cellValue === k || cellValue.includes(k))) qtyIdx = c;
                     }
-                });
-                if (newBom.length === 0) setFileError("Nessun dato valido in Excel."); else setBom(newBom);
-            } catch (err) { setFileError("Errore Excel."); }
+
+                    // Se abbiamo trovato entrambe, ci fermiamo
+                    if (codeIdx !== -1 && qtyIdx !== -1) {
+                        startRow = r + 1; // I dati iniziano dalla riga successiva
+                        console.log(`Header trovato alla riga ${r}. Codice: Col ${codeIdx}, Qta: Col ${qtyIdx}`);
+                        break;
+                    }
+                }
+
+                // 2. Fallback se non trova intestazioni esatte
+                if (codeIdx === -1) {
+                    console.log("Header non trovato, provo colonne standard A e D (o B)...");
+                    // Nel tuo screenshot: A=Part Code (0), D=Q.ty (3)
+                    // Proviamo a vedere se la colonna 0 contiene codici
+                    const sampleRow = data[startRow + 2] || data[startRow + 3]; // Prendi una riga a caso
+                    if (sampleRow && String(sampleRow[0]).trim().length > 4) {
+                        codeIdx = 0;
+                        // Cerchiamo una colonna numerica per la Qta
+                        // Priorità: Colonna D (3) -> Colonna B (1) -> Colonna C (2)
+                        if (sampleRow[3] && !isNaN(parseFloat(sampleRow[3]))) qtyIdx = 3;
+                        else if (sampleRow[1] && !isNaN(parseFloat(sampleRow[1]))) qtyIdx = 1;
+                        else qtyIdx = 1; // Default
+                    }
+                }
+
+                // 3. Estrai i dati
+                if (codeIdx !== -1) {
+                    for (let r = startRow; r < data.length; r++) {
+                        const row = data[r];
+                        if (!row) continue;
+
+                        const rawCode = row[codeIdx];
+                        // Se qtyIdx non è stato trovato, assumiamo 1
+                        const rawQty = qtyIdx !== -1 ? row[qtyIdx] : 1;
+
+                        if (rawCode) {
+                            const codeStr = String(rawCode).trim();
+                            // Ignora se sembra ancora un'intestazione
+                            if (codeKeywords.some(k => codeStr.toLowerCase().includes(k))) continue;
+
+                            const cleaned = cleanCode(codeStr);
+                            // Pulisci la quantità (gestisce '1', '4', ma anche stringhe spurie)
+                            let q = 1;
+                            if (rawQty) {
+                                const qStr = String(rawQty).replace(',', '.');
+                                const parsed = parseFloat(qStr);
+                                if (!isNaN(parsed) && parsed > 0) q = parsed;
+                            }
+
+                            // Filtro di validità: il codice deve essere sensato
+                            if (cleaned.length >= 4) {
+                                newBom.push({ sekoCode: cleaned, quantity: q });
+                            }
+                        }
+                    }
+                }
+
+                if (newBom.length === 0) setFileError("Nessun dato valido trovato in Excel. Verifica che ci siano le colonne 'Part Code' e 'Q.ty'.");
+                else setBom(newBom);
+
+            } catch (err) { 
+                console.error(err);
+                setFileError("Errore durante la lettura del file Excel."); 
+            }
             setIsProcessing(false);
         };
         reader.readAsBinaryString(file);
@@ -788,7 +883,7 @@ const ProductModal = ({ isOpen, onClose, onSave, product }: any) => {
     );
 };
 
-// --- HEADER (INCLUSO) ---
+// --- HEADER ---
 const Header = ({ theme, toggleTheme, user, onLogout }: any) => ( 
     <header className="sticky top-0 z-40 bg-slate-100/80 dark:bg-slate-950/75 backdrop-blur-lg border-b border-slate-300/10 dark:border-slate-500/30 transition-colors">
       <div className="container mx-auto px-4 md:px-8 py-4 flex justify-between items-center">
@@ -806,7 +901,7 @@ const Header = ({ theme, toggleTheme, user, onLogout }: any) => (
     </header>
 );
 
-// --- TABLE COMPONENTI (INCLUSA) ---
+// --- TABLE COMPONENTI ---
 const ComponentTable = ({ components, onEdit, onDelete }: any) => {
   if (components.length === 0) {
     return (
@@ -857,7 +952,7 @@ const ComponentTable = ({ components, onEdit, onDelete }: any) => {
   );
 };
 
-// --- DASHBOARD (INCLUSA) ---
+// --- DASHBOARD ---
 const Dashboard = ({ components }: any) => {
     const stats = useMemo(() => {
         const totalComponents = components.length;
@@ -913,7 +1008,7 @@ const Dashboard = ({ components }: any) => {
     );
 };
 
-// --- COMPONENTS VIEW (INCLUSA) ---
+// --- COMPONENTS VIEW ---
 const ComponentsView = ({ components, onEdit, onDelete, onOpenModal, onOpenBomModal, onOpenCsvModal, onOpenAselUpdateModal, filteredComponents, searchQuery, setSearchQuery, handleExportView }: any) => (
     <div>
         <div className="flex flex-wrap justify-between items-center mb-8 gap-4">
@@ -953,7 +1048,7 @@ const ComponentsView = ({ components, onEdit, onDelete, onOpenModal, onOpenBomMo
     </div>
 );
 
-// --- FORECAST VIEW (INCLUSA) ---
+// --- FORECAST VIEW ---
 const ForecastView = ({ products, components, onAddProduct, onEditProduct, onDeleteProduct }: any) => {
     const [plan, setPlan] = useState([{ productId: '', quantity: 0 }]);
     const [results, setResults] = useState<any[] | null>(null);
